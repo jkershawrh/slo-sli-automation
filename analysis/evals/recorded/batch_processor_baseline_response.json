@@ -1,0 +1,52 @@
+{
+  "schema_version": 2,
+  "service": "batch-processor",
+  "baseline_schema_version": 1,
+  "maturity_tier": "growing",
+  "slos": [
+    {
+      "sli_name": "job_latency_p99",
+      "sli_type": "latency",
+      "sli_definition": "99th percentile job processing time at or below target",
+      "target": 37500.0,
+      "target_op": "lte",
+      "target_unit": "ms",
+      "error_budget_percent": 1.0,
+      "burn_rate_policy": {
+        "windows": [
+          {"long_window": "6h", "short_window": "30m", "burn_rate": 6.0, "severity": "critical"},
+          {"long_window": "24h", "short_window": "2h", "burn_rate": 3.0, "severity": "warning"}
+        ]
+      },
+      "headroom": {
+        "observed_value": 30000.0,
+        "margin": 7500.0,
+        "margin_rationale": "1 stddev (7500ms) headroom above observed p99 for batch workload"
+      },
+      "rationale": "The observed p99 job latency is 30000ms with a stddev of 7500ms across 10000 jobs. The stddev is 25% of the p99 value, indicating significant variability typical of batch processing workloads with heterogeneous job sizes. Setting the target at 37500ms provides 1 stddev headroom. The high variance suggests investigating job queue prioritization and resource contention during peak batch windows before tightening.",
+      "requires_review": false
+    },
+    {
+      "sli_name": "service_availability",
+      "sli_type": "availability",
+      "sli_definition": "Ratio of successful job completions at or above target",
+      "target": 0.982,
+      "target_op": "gte",
+      "target_unit": "ratio",
+      "error_budget_percent": 1.8,
+      "burn_rate_policy": {
+        "windows": [
+          {"long_window": "6h", "short_window": "30m", "burn_rate": 6.0, "severity": "critical"},
+          {"long_window": "24h", "short_window": "2h", "burn_rate": 3.0, "severity": "warning"}
+        ]
+      },
+      "headroom": {
+        "observed_value": 0.99,
+        "margin": 0.008,
+        "margin_rationale": "2 stddev (0.004 each) below observed availability for batch processor"
+      },
+      "rationale": "The observed availability is 0.99 (99%) with error rate stddev of 0.004. Out of 10000 jobs, 100 failed. Setting the target at 0.982 provides 2 stddev headroom. The error rate stddev of 0.004 (40% of the error rate) indicates notable variation in job success rates, likely driven by data quality issues or transient infrastructure problems. Investigate the top failure modes in the error logs before setting a tighter availability target.",
+      "requires_review": false
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "service": "checkout-api",
+  "evaluation_window": "1h",
+  "evaluated_at": "2026-07-05T14:00:00Z",
+  "baseline_schema_version": 1,
+  "indicators": [
+    {
+      "name": "latency_p99_ms",
+      "live_value": 510.0,
+      "baseline_value": 500.0,
+      "abs_deviation": 10.0,
+      "rel_deviation": 0.02,
+      "direction": "increasing",
+      "band_upper": 690.0,
+      "band_lower": 310.0,
+      "band_breach": false,
+      "first_pass_class": "no_significant_drift"
+    },
+    {
+      "name": "latency_p50_ms",
+      "live_value": 125.0,
+      "baseline_value": 120.0,
+      "abs_deviation": 5.0,
+      "rel_deviation": 0.0417,
+      "direction": "increasing",
+      "band_upper": 310.0,
+      "band_lower": -70.0,
+      "band_breach": false,
+      "first_pass_class": "no_significant_drift"
+    },
+    {
+      "name": "error_rate_ratio",
+      "live_value": 0.0003,
+      "baseline_value": 0.002,
+      "abs_deviation": 0.0017,
+      "rel_deviation": -0.85,
+      "direction": "decreasing",
+      "band_upper": 0.0032,
+      "band_lower": 0.0008,
+      "band_breach": true,
+      "first_pass_class": "error_rate_reduction"
+    },
+    {
+      "name": "availability_ratio",
+      "live_value": 0.9978,
+      "baseline_value": 0.998,
+      "abs_deviation": 0.0002,
+      "rel_deviation": -0.0002,
+      "direction": "decreasing",
+      "band_upper": 0.9992,
+      "band_lower": 0.9968,
+      "band_breach": false,
+      "first_pass_class": "no_significant_drift"
+    },
+    {
+      "name": "throughput_mean_rps",
+      "live_value": 5.2,
+      "baseline_value": 5.0,
+      "abs_deviation": 0.2,
+      "rel_deviation": 0.04,
+      "direction": "increasing",
+      "band_upper": 7.4,
+      "band_lower": 2.6,
+      "band_breach": false,
+      "first_pass_class": "no_significant_drift"
+    }
+  ],
+  "dominant_signal": {
+    "indicator": "error_rate_ratio",
+    "class": "error_rate_reduction",
+    "breach_magnitude": 1.4167
+  },
+  "all_breached_indicators": [
+    "error_rate_ratio"
+  ],
+  "provenance": {
+    "prometheus_endpoint": "https://thanos-querier.openshift-monitoring.svc:9091",
+    "query_timestamps": {
+      "start": "2026-07-05T13:00:00Z",
+      "end": "2026-07-05T14:00:00Z"
+    },
+    "coverage_ratio": 0.98
+  }
+}

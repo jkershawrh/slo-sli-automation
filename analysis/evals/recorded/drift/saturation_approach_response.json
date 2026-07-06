@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "service": "checkout-api",
+  "classification": "saturation_approach",
+  "severity": "high",
+  "likely_cause": "CPU utilization has increased from 0.4 to 0.85, a 112.5% increase that breaches the upper tolerance band of 0.6. The service is approaching resource saturation, which may lead to latency degradation or throttling if the trend continues.",
+  "recommendations": [
+    {
+      "action": "Review resource requests and limits for the checkout-api pods and consider increasing CPU allocation.",
+      "confidence": "high",
+      "rationale": "CPU utilization at 0.85 (baseline 0.4) with breach magnitude of 2.25 indicates the service is consuming more than double its typical CPU. Latency (p99 510.0 ms vs baseline 500.0 ms) has not yet degraded, but at 85% utilization, further load increases are likely to cause latency spikes.",
+      "remediation_plan": {
+        "priority": "immediate",
+        "evidence_basis": "cpu_mean_ratio live value 0.85 vs baseline 0.4, abs_deviation 0.45, breach magnitude 2.25; breaches upper tolerance band of 0.6",
+        "expected_impact": "Reducing CPU utilization back within the tolerance band of 0.2 to 0.6 by increasing resource allocation or optimizing processing",
+        "verification_method": "Re-run sloscope drift after resource adjustment, verify cpu_mean_ratio returns within tolerance band and breach_magnitude drops below 1.0"
+      }
+    },
+    {
+      "action": "Investigate whether a code change or workload shift is driving the increased CPU consumption.",
+      "confidence": "medium",
+      "rationale": "The CPU increase from 0.4 to 0.85 with stable throughput (5.2 rps vs baseline 5.0 rps) suggests a per-request processing cost increase rather than a traffic-driven load change."
+    }
+  ]
+}

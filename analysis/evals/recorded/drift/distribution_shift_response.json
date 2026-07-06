@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "service": "checkout-api",
+  "classification": "distribution_shift",
+  "severity": "medium",
+  "likely_cause": "The latency distribution has shifted: p50 remains stable at 122.0 ms (baseline 120.0 ms), but p99 has increased from 500.0 ms to 750.0 ms. This divergence indicates that while most requests perform normally, a subset experiences significantly higher latency, suggesting a bimodal distribution shift possibly caused by a slow code path, intermittent dependency issues, or resource contention affecting a fraction of requests.",
+  "recommendations": [
+    {
+      "action": "Profile request latency distributions to identify the subset of slow requests and their common characteristics.",
+      "confidence": "high",
+      "rationale": "The p50 latency of 122.0 ms is within 2.0 ms of the baseline 120.0 ms, while the p99 has increased by 250.0 ms from 500.0 ms to 750.0 ms (breach magnitude 1.3158). This gap between stable median and elevated tail indicates a bimodal distribution rather than a uniform regression.",
+      "remediation_plan": {
+        "priority": "short_term",
+        "evidence_basis": "latency_p99_ms live value 750.0 vs baseline 500.0, abs_deviation 250.0, breach magnitude 1.3158; p50 stable at 122.0 vs baseline 120.0, indicating bimodal distribution shift",
+        "expected_impact": "Identifying and resolving the slow request subset to bring p99 latency back within the tolerance band of 310.0 to 690.0 ms while maintaining stable p50",
+        "verification_method": "Re-run sloscope drift after implementing fix, verify latency_p99_ms returns within tolerance band while latency_p50_ms remains stable"
+      }
+    },
+    {
+      "action": "Investigate whether specific request types, user segments, or backend paths correlate with the elevated tail latency.",
+      "confidence": "medium",
+      "rationale": "The distribution shift with p50 at 122.0 ms and p99 at 750.0 ms suggests only a subset of requests are affected. Error rate (0.0022 vs baseline 0.002) and throughput (5.2 rps vs baseline 5.0 rps) remain healthy, ruling out systemic degradation."
+    }
+  ]
+}

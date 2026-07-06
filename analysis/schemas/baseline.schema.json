@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "baseline.schema.json",
+  "title": "Baseline Artifact",
+  "description": "Deterministic empirical baseline computed from evidence. Versioned contract consumed by drift detector.",
+  "type": "object",
+  "required": ["schema_version", "service", "namespace", "lookback_window", "generated_at", "indicators", "provenance"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "service": { "type": "string", "minLength": 1 },
+    "namespace": { "type": "string", "minLength": 1 },
+    "context_type": {
+      "type": "string",
+      "enum": ["service", "infra"],
+      "default": "service",
+      "description": "Whether this baseline is for an application service or infrastructure component"
+    },
+    "maturity_tier": {
+      "type": "string",
+      "enum": ["new", "growing", "mature"],
+      "description": "Service maturity tier at baseline generation time"
+    },
+    "lookback_window": { "type": "string", "pattern": "^[0-9]+[smhd]$" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "indicators": {
+      "type": "object",
+      "required": ["latency", "error_rate", "availability", "throughput"],
+      "properties": {
+        "latency": {
+          "type": "object",
+          "required": ["p50_ms", "p90_ms", "p95_ms", "p99_ms", "stddev_ms", "sample_count", "source_query"],
+          "properties": {
+            "p50_ms": { "type": "number" },
+            "p90_ms": { "type": "number" },
+            "p95_ms": { "type": "number" },
+            "p99_ms": { "type": "number" },
+            "stddev_ms": { "type": "number", "minimum": 0 },
+            "sample_count": { "type": "integer", "minimum": 0 },
+            "source_query": { "type": "string" }
+          }
+        },
+        "error_rate": {
+          "type": "object",
+          "required": ["ratio", "stddev", "error_count", "total_count", "source_query"],
+          "properties": {
+            "ratio": { "type": "number", "minimum": 0, "maximum": 1 },
+            "stddev": { "type": "number", "minimum": 0 },
+            "error_count": { "type": "integer", "minimum": 0 },
+            "total_count": { "type": "integer", "minimum": 0 },
+            "source_query": { "type": "string" }
+          }
+        },
+        "availability": {
+          "type": "object",
+          "required": ["ratio", "definition"],
+          "properties": {
+            "ratio": { "type": "number", "minimum": 0, "maximum": 1 },
+            "definition": { "type": "string" }
+          }
+        },
+        "throughput": {
+          "type": "object",
+          "required": ["mean_rps", "p95_rps", "stddev_rps", "sample_count"],
+          "properties": {
+            "mean_rps": { "type": "number", "minimum": 0 },
+            "p95_rps": { "type": "number", "minimum": 0 },
+            "stddev_rps": { "type": "number", "minimum": 0 },
+            "sample_count": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "saturation": {
+          "type": "object",
+          "properties": {
+            "cpu_mean_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
+            "cpu_p95_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
+            "memory_mean_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
+            "memory_p95_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
+            "available": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["prometheus_endpoint", "query_timestamps", "coverage_ratio"],
+      "properties": {
+        "prometheus_endpoint": { "type": "string" },
+        "query_timestamps": {
+          "type": "object",
+          "required": ["start", "end"],
+          "properties": {
+            "start": { "type": "string", "format": "date-time" },
+            "end": { "type": "string", "format": "date-time" }
+          }
+        },
+        "coverage_ratio": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    }
+  },
+  "additionalProperties": false
+}

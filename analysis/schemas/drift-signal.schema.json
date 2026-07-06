@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "drift-signal.schema.json",
+  "title": "Drift Signal Artifact",
+  "description": "Deterministic deviation measurement against a baseline. Stage one output.",
+  "type": "object",
+  "required": ["schema_version", "service", "evaluation_window", "evaluated_at", "baseline_schema_version", "indicators", "dominant_signal", "all_breached_indicators", "provenance"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "service": { "type": "string", "minLength": 1 },
+    "evaluation_window": { "type": "string", "pattern": "^[0-9]+[smhd]$" },
+    "evaluated_at": { "type": "string", "format": "date-time" },
+    "baseline_schema_version": { "type": "integer" },
+    "indicators": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "live_value", "baseline_value", "abs_deviation", "rel_deviation", "direction", "band_upper", "band_lower", "band_breach", "first_pass_class"],
+        "properties": {
+          "name": { "type": "string" },
+          "live_value": { "type": "number" },
+          "baseline_value": { "type": "number" },
+          "abs_deviation": { "type": "number", "minimum": 0 },
+          "rel_deviation": { "type": "number" },
+          "direction": { "type": "string", "enum": ["increasing", "decreasing", "stable"] },
+          "band_upper": { "type": "number" },
+          "band_lower": { "type": "number" },
+          "band_breach": { "type": "boolean" },
+          "first_pass_class": {
+            "type": "string",
+            "enum": [
+              "latency_regression", "latency_improvement",
+              "error_rate_elevation", "error_rate_reduction",
+              "throughput_collapse", "throughput_surge",
+              "saturation_approach", "availability_drop",
+              "distribution_shift", "no_significant_drift"
+            ]
+          },
+          "status": { "type": "string", "enum": ["measured", "skipped"], "default": "measured" },
+          "skip_reason": { "type": "string" }
+        }
+      }
+    },
+    "dominant_signal": {
+      "type": "object",
+      "required": ["indicator", "class", "breach_magnitude"],
+      "properties": {
+        "indicator": { "type": "string" },
+        "class": {
+          "type": "string",
+          "enum": [
+            "latency_regression", "latency_improvement",
+            "error_rate_elevation", "error_rate_reduction",
+            "throughput_collapse", "throughput_surge",
+            "saturation_approach", "availability_drop",
+            "distribution_shift", "no_significant_drift"
+          ]
+        },
+        "breach_magnitude": { "type": "number" }
+      }
+    },
+    "all_breached_indicators": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["prometheus_endpoint", "query_timestamps", "coverage_ratio"],
+      "properties": {
+        "prometheus_endpoint": { "type": "string" },
+        "query_timestamps": {
+          "type": "object",
+          "required": ["start", "end"],
+          "properties": {
+            "start": { "type": "string", "format": "date-time" },
+            "end": { "type": "string", "format": "date-time" }
+          }
+        },
+        "coverage_ratio": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,52 @@
+{
+  "schema_version": 2,
+  "service": "checkout-api",
+  "baseline_schema_version": 1,
+  "maturity_tier": "growing",
+  "slos": [
+    {
+      "sli_name": "request_latency_p99",
+      "sli_type": "latency",
+      "sli_definition": "99th percentile request latency at or below target",
+      "target": 595.0,
+      "target_op": "lte",
+      "target_unit": "ms",
+      "error_budget_percent": 0.5,
+      "burn_rate_policy": {
+        "windows": [
+          {"long_window": "1h", "short_window": "5m", "burn_rate": 14.4, "severity": "critical"},
+          {"long_window": "6h", "short_window": "30m", "burn_rate": 6.0, "severity": "warning"}
+        ]
+      },
+      "headroom": {
+        "observed_value": 500.0,
+        "margin": 95.0,
+        "margin_rationale": "1 stddev (95ms) headroom above observed p99 for growing maturity tier"
+      },
+      "rationale": "The observed p99 latency is 500.0ms with a stddev of 95.0ms and sample count of 500000. The p50-to-p99 ratio of 4.2x (120ms to 500ms) indicates a meaningful latency tail. Setting the target at 595ms provides 1 stddev of headroom above observed p99, which accommodates normal variance without false alerts. The 95ms stddev represents 19% of the p99 value, suggesting moderate variability. Investigate slow database queries or downstream service timeouts contributing to the tail before considering a tighter target.",
+      "requires_review": false
+    },
+    {
+      "sli_name": "service_availability",
+      "sli_type": "availability",
+      "sli_definition": "Ratio of successful requests at or above target",
+      "target": 0.9968,
+      "target_op": "gte",
+      "target_unit": "ratio",
+      "error_budget_percent": 0.32,
+      "burn_rate_policy": {
+        "windows": [
+          {"long_window": "1h", "short_window": "5m", "burn_rate": 14.4, "severity": "critical"},
+          {"long_window": "6h", "short_window": "30m", "burn_rate": 6.0, "severity": "warning"}
+        ]
+      },
+      "headroom": {
+        "observed_value": 0.998,
+        "margin": 0.0012,
+        "margin_rationale": "2 stddev (0.0006 each) below observed availability for growing maturity tier"
+      },
+      "rationale": "The observed availability is 0.998 (99.8%) based on 1000 errors out of 500000 total requests, with error rate stddev of 0.0006. Setting the target at 0.9968 provides 2 stddev of headroom below observed availability, which absorbs normal error rate fluctuation and minor incident windows. The low error rate stddev of 0.0006 (30% of the error rate) indicates relatively stable error behavior. This target is achievable without infrastructure changes based on the current 30d baseline.",
+      "requires_review": false
+    }
+  ]
+}

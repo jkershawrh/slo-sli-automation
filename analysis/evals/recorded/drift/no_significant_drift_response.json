@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "service": "checkout-api",
+  "classification": "no_significant_drift",
+  "severity": "info",
+  "likely_cause": "All indicators remain within their tolerance bands. Latency p99 is 480.0 ms (baseline 500.0 ms), error rate is 0.0022 (baseline 0.002), availability is 0.9978 (baseline 0.998), and throughput is 5.2 rps (baseline 5.0 rps). No significant deviation from the baseline is observed.",
+  "recommendations": [
+    {
+      "action": "Continue monitoring with the current baseline. No action required.",
+      "confidence": "high",
+      "rationale": "All indicators are within tolerance bands. Latency p99 at 480.0 ms is within the band of 310.0 ms to 690.0 ms. Error rate at 0.0022 is within 0.0008 to 0.0032. Availability at 0.9978 is within 0.9968 to 0.9992. Throughput at 5.2 rps is within 2.6 to 7.4 rps. No breaches detected."
+    }
+  ]
+}

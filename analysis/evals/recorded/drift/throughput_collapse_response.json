@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "service": "checkout-api",
+  "classification": "throughput_collapse",
+  "severity": "critical",
+  "likely_cause": "Throughput has dropped from 5.0 rps to 1.5 rps, a 70% decrease that breaches the lower tolerance band of 2.6 rps. This indicates the service is processing far fewer requests than expected, possibly due to upstream routing issues, pod scaling problems, or a partial outage.",
+  "recommendations": [
+    {
+      "action": "Investigate upstream traffic routing and load balancer configuration to determine if requests are being directed elsewhere.",
+      "confidence": "high",
+      "rationale": "The throughput of 1.5 rps vs baseline 5.0 rps represents a severe drop with breach magnitude of 1.4583. Error rate (0.0022 vs baseline 0.002) and latency (p99 510.0 ms vs baseline 500.0 ms) remain stable, suggesting the service is healthy but receiving fewer requests.",
+      "remediation_plan": {
+        "priority": "immediate",
+        "evidence_basis": "throughput_mean_rps live value 1.5 vs baseline 5.0, abs_deviation 3.5, breach magnitude 1.4583; breaches lower tolerance band of 2.6",
+        "expected_impact": "Restoring throughput back within the tolerance band of 2.6 to 7.4 rps",
+        "verification_method": "Re-run sloscope drift after implementing fix, verify throughput_mean_rps returns within tolerance band and breach_magnitude drops below 1.0"
+      }
+    },
+    {
+      "action": "Check pod replica count and horizontal pod autoscaler status for the checkout-api service.",
+      "confidence": "medium",
+      "rationale": "The throughput collapse from 5.0 rps to 1.5 rps with stable error rate and latency could indicate reduced capacity from fewer running pods rather than a service degradation."
+    }
+  ]
+}

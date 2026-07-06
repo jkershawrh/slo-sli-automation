@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "service": "checkout-api",
+  "classification": "latency_improvement",
+  "severity": "info",
+  "likely_cause": "The p99 latency has decreased from 500.0 ms to 280.0 ms, a 44% improvement that breaches the lower tolerance band of 310.0 ms. This suggests a positive performance change, likely from an optimization, infrastructure upgrade, or reduced load.",
+  "recommendations": [
+    {
+      "action": "Update the baseline to reflect the improved latency profile and consider tightening SLO targets.",
+      "confidence": "high",
+      "rationale": "The p99 latency of 280.0 ms is well below the previous baseline of 500.0 ms. With a deviation of 220.0 ms downward, the current baseline no longer reflects actual service performance. Updating prevents false alerts against the outdated reference."
+    },
+    {
+      "action": "Verify that the improvement is sustained over a longer evaluation window before updating SLO targets.",
+      "confidence": "medium",
+      "rationale": "The current evaluation window is 1h. The observed p99 of 280.0 ms vs baseline 500.0 ms may reflect temporary low-traffic conditions. Confirming over a 24h or 7d window ensures the improvement is durable."
+    }
+  ]
+}
