@@ -1,29 +1,47 @@
 # sloscope
 
-Evidence-based SLO/SLI generator and drift detector. Queries Prometheus/Thanos telemetry, computes deterministic baselines, and uses an LLM to propose defensible SLOs and classify drift -- every target traces back to observed history.
+Evidence-based SLO/SLI generator and drift detector for OpenShift services and infrastructure. Built for the Red Hat Demo Platform (RHDP) to replace guesswork-driven SLO targets with defensible, data-grounded objectives backed by Prometheus/Thanos telemetry and IBM Granite inference.
+
+## Why this exists
+
+As RHDP consolidates from GPU-heavy multi-model deployments to a leaner Intel Xeon 6 CPU-only architecture for Summit Connect events, reliability becomes the constraint. SLO targets set by gut feel ("let's aim for 99.9%") break in two ways: they are either unachievable (triggering alert fatigue) or too loose (hiding real degradation during live demos).
+
+sloscope solves this by grounding every SLO in observed telemetry:
+
+- A service running at 93.2% availability gets an incremental improvement target, not an aspirational 99.9% that will never be met
+- A model-serving endpoint with high p99 variance gets wider headroom so normal jitter does not page the on-call during a Summit Connect session
+- When latency regresses after a deployment, the drift detector identifies whether it is a tail-latency issue (p99 up, p50 stable) or systemic slowdown (everything up), and recommends targeted investigation rather than generic "check the logs"
 
 ## How it works
 
-Two-stage architecture, applied to both SLO generation and drift detection:
+Two stages. Evidence first, judgment second.
 
-1. **Stage one is deterministic.** Compute empirical baselines (or deviation signals) from telemetry in code. No LLM touches this stage. The numbers are measured, reproducible, and auditable.
+**Stage one is deterministic.** Query Prometheus/Thanos, compute empirical baselines in code: latency percentiles, error rates, throughput distribution, availability, saturation. No LLM touches this. The numbers are measured, reproducible, and auditable.
 
-2. **Stage two is judgment.** Hand the computed evidence to an LLM. It proposes SLO targets with headroom, classifies drift with remediation plans, and writes rationale citing the specific values it was given. It never fabricates a number.
+**Stage two is judgment.** Hand the computed evidence to an LLM (Granite on the MAAS LiteLLM proxy, or any OpenAI-compatible endpoint). It proposes SLO targets with stddev-based headroom, classifies drift with prioritized remediation plans, and writes rationale citing specific observed values. It never fabricates a number, and it never actuates.
 
 ```
-                    Prometheus/Thanos
-                          |
-                    [Evidence Collection]
-                          |
-                    [Deterministic Baseline]  <-- stage one (code)
-                          |
-                    [LLM Proposal/Classification]  <-- stage two (judgment)
-                          |
-              +-----------+-----------+
-              |           |           |
-         OpenSLO     Prometheus   Audit Bundle
-          YAML       Alert Rules    (traceable)
+          OpenShift Cluster (MAAS / rac-MAAS)
+                    |
+              Prometheus/Thanos
+                    |
+            [Evidence Collection]           <-- PromQL queries, provenance tracked
+                    |
+            [Deterministic Baseline]        <-- stage one: code, reproducible
+                    |
+            [LLM Proposal/Classification]   <-- stage two: Granite via LiteLLM
+                    |
+          +---------+---------+
+          |         |         |
+     OpenSLO   Prometheus   Audit Bundle
+      YAML     Alert Rules   (SHA-256 hashes, full chain)
 ```
+
+## Target audience
+
+- **RHDP platform engineers** managing the MAAS clusters, model-serving endpoints, and demo applications that must stay reliable through Summit Connect
+- **SREs** operating services on OpenShift who need SLOs derived from actual performance data, not aspirational targets
+- **Demo lab owners** who need to know if their lab's performance has drifted from its baseline before a live event
 
 ## Quick start
 
@@ -33,209 +51,206 @@ Two-stage architecture, applied to both SLO generation and drift detection:
 - Python 3.9+
 - `pip install -r requirements.txt`
 
-### Environment variables
+### Environment
 
 ```bash
-export PROM_URL="https://thanos-querier.example.com:9091"  # Prometheus/Thanos endpoint
-export PROM_TOKEN="..."                                     # Optional bearer token
-export LLM_BASE_URL="https://your-llm-endpoint/v1"         # OpenAI-compatible API
-export LLM_API_KEY="..."                                    # API key
-export LLM_MODEL="granite-3-2-8b-instruct"                 # Model name
+# Prometheus/Thanos (Thanos Querier route on OpenShift, or any compatible endpoint)
+export PROM_URL="https://thanos-querier.openshift-monitoring.svc:9091"
+export PROM_TOKEN="..."                                     # Optional bearer token for in-cluster Thanos
+
+# LLM (OpenAI-compatible -- LiteLLM proxy on MAAS, vLLM, RHEL AI, or any endpoint)
+export LLM_BASE_URL="https://litellm.example.com/v1"
+export LLM_API_KEY="..."
+export LLM_MODEL="granite-3-2-8b-instruct"
 ```
 
 ### Generate SLOs
 
 ```bash
-# Build
 make build
 
-# Dry run (no LLM needed -- computes baseline only)
+# Dry run -- computes baseline from telemetry, no LLM needed
 ./bin/sloscope generate \
-  --service checkout-api \
-  --namespace payments \
-  --lookback 30d \
-  --out ./out/checkout-api \
-  --dry-run
-
-# Full run (requires LLM credentials)
-./bin/sloscope generate \
-  --service checkout-api \
-  --namespace payments \
+  --service model-serving-api \
+  --namespace inference \
   --lookback 30d \
   --type service \
   --maturity growing \
-  --out ./out/checkout-api
+  --out ./out/model-serving-api \
+  --dry-run
 
-# From a pre-collected evidence file (no Prometheus needed)
+# Full run -- baseline + LLM proposal + rendered outputs
 ./bin/sloscope generate \
-  --service checkout-api \
+  --service model-serving-api \
+  --namespace inference \
+  --lookback 30d \
+  --type service \
+  --maturity growing \
+  --out ./out/model-serving-api
+
+# From a pre-collected evidence file (offline or CI use)
+./bin/sloscope generate \
+  --service model-serving-api \
   --evidence testdata/evidence_checkout_api.json \
-  --out ./out/checkout-api
+  --out ./out/model-serving-api
 ```
 
-**Output artifacts:**
-
-| File | Description |
-|------|-------------|
-| `evidence.json` | Raw telemetry from Prometheus with provenance |
-| `baseline.json` | Deterministic empirical baseline (versioned contract) |
-| `proposal.json` | LLM-proposed SLOs with targets, rationale, headroom |
-| `openslo.yaml` | OpenSLO v1 spec with correct `op: lte/gte` per signal |
-| `prometheus-rules.yaml` | Recording rules + multi-window multi-burn-rate alerts |
-| `audit-bundle.json` | Full evidence chain with SHA-256 content hashes |
+**Outputs:** `evidence.json`, `baseline.json`, `proposal.json`, `openslo.yaml`, `prometheus-rules.yaml`, `audit-bundle.json`
 
 ### Detect drift
 
 ```bash
-# Dry run (deterministic deviation only, no LLM)
+# Dry run -- deterministic deviation measurement, no LLM
 ./bin/sloscope drift \
-  --service checkout-api \
-  --baseline ./out/checkout-api/baseline.json \
+  --service model-serving-api \
+  --baseline ./out/model-serving-api/baseline.json \
   --window 1h \
-  --out ./out/checkout-api/drift \
+  --type service \
+  --out ./out/model-serving-api/drift \
   --dry-run
 
-# Full run (LLM classifies drift and proposes remediation)
+# Full run -- LLM classifies drift type and proposes remediation
 ./bin/sloscope drift \
-  --service checkout-api \
-  --baseline ./out/checkout-api/baseline.json \
-  --evidence testdata/drift_live_latency_regression.json \
+  --service model-serving-api \
+  --baseline ./out/model-serving-api/baseline.json \
+  --window 1h \
   --type service \
-  --out ./out/checkout-api/drift
+  --out ./out/model-serving-api/drift
 ```
 
-**Output artifacts:**
+**Outputs:** `drift-signal.json`, `drift-report.json`, `drift-summary.txt`, `drift-audit-bundle.json`
 
-| File | Description |
-|------|-------------|
-| `drift-signal.json` | Per-indicator deviation, band breach, rule-based classification |
-| `drift-report.json` | LLM classification with prioritized remediation plan |
-| `drift-summary.txt` | Human-readable drift report |
-| `drift-audit-bundle.json` | Full evidence chain with content hashes |
+## The four golden signals
 
-## Target directionality
+sloscope encodes directionality explicitly for each signal -- the comparison operator determines what "meeting the SLO" means:
 
-The four golden signals have different "directions of goodness." sloscope encodes this explicitly:
+| Signal | SLI Type | target_op | Meaning | Example |
+|--------|----------|-----------|---------|---------|
+| Latency | `latency` | `lte` | p99 at or below target | p99 <= 600ms |
+| Errors | `error_rate` | `lte` | Error ratio at or below target | error_rate <= 0.003 |
+| Traffic | `throughput` | `gte` | RPS at or above target | rps >= 4.0 |
+| Saturation | `saturation` | `lte` | Utilization at or below target | cpu <= 0.80 |
+| (Derived) | `availability` | `gte` | Availability at or above target | availability >= 0.996 |
 
-| SLI Type | Direction | target_op | Target meaning |
-|----------|-----------|-----------|----------------|
-| Latency | Lower is better | `lte` | p99 at or below X ms |
-| Error rate | Lower is better | `lte` | Ratio at or below X |
-| Availability | Higher is better | `gte` | Ratio at or above X |
-| Throughput | Higher is better | `gte` | RPS at or above X |
-| Saturation | Lower is better | `lte` | Utilization at or below X |
+Targets always include headroom based on observed variance. The tool never proposes a target equal to the observed value -- there is always margin so normal fluctuation does not trigger alerts.
 
-Targets always include headroom based on observed standard deviation. The tool never proposes a target equal to the observed value.
+## Incremental targets, not aspirational jumps
 
-## Maturity tiers
+sloscope computes targets from observed performance plus stddev-based headroom, scaled by maturity tier:
 
-The `--maturity` flag controls how aggressively targets are set:
+| Tier | Headroom | When to use |
+|------|----------|-------------|
+| `new` | 2-3 stddev | New services, first baseline, wide margins |
+| `growing` | 1-2 stddev | Services with history, standard targets (default) |
+| `mature` | 0.5-1 stddev | Stable services, tight SLOs, ready for promotion |
 
-| Tier | Headroom | Use case |
-|------|----------|----------|
-| `new` | 2-3 stddev | New services establishing baselines |
-| `growing` | 1-2 stddev | Services with some history (default) |
-| `mature` | 0.5-1 stddev | Stable services ready for tight SLOs |
+A service at 93.2% availability with 2% stddev gets a `growing` target of ~89.2% (2 stddev headroom below observed), not 99.9%. The rationale explains why, cites the specific numbers, and suggests what to fix to improve. Once the service stabilizes, `--maturity mature` tightens the target incrementally.
 
 ## Context types
 
-The `--type` flag adapts the tool for different workloads:
+The `--type` flag adapts metric collection and LLM reasoning for the workload:
 
-- `service` (default) -- application metrics: HTTP latency, request rates, error rates
-- `infra` -- infrastructure metrics: node health, network throughput, resource utilization
+- **`service`** (default) -- application-level: HTTP latency histograms, request/error rates, availability. Reasoning focuses on API performance, deployment impact, downstream dependencies.
+- **`infra`** -- infrastructure-level: node CPU/memory, network throughput, storage I/O, pod scheduling. Reasoning focuses on capacity planning, node health, resource exhaustion, blast radius.
 
-## Drift taxonomy
+## Drift detection and remediation
 
-The drift detector classifies deviations into a fixed taxonomy:
+The drift detector classifies deviations into a fixed 10-class taxonomy, then produces evidence-based remediation:
 
-| Class | Direction | Severity signal |
-|-------|-----------|-----------------|
-| `latency_regression` | Latency increased | Breach magnitude |
-| `latency_improvement` | Latency decreased | Positive change |
-| `error_rate_elevation` | Error rate increased | Breach magnitude |
-| `error_rate_reduction` | Error rate decreased | Positive change |
-| `throughput_collapse` | Throughput decreased | Breach magnitude |
-| `throughput_surge` | Throughput increased | Breach magnitude |
-| `saturation_approach` | Resource utilization increased | Breach magnitude |
-| `availability_drop` | Availability decreased | Breach magnitude |
-| `distribution_shift` | Mixed signals (e.g., p50 stable, p99 diverged) | Pattern analysis |
-| `no_significant_drift` | All within tolerance | No breach |
+| Class | What it means |
+|-------|---------------|
+| `latency_regression` | Latency increased beyond tolerance band |
+| `latency_improvement` | Latency decreased (positive -- recommend baseline update) |
+| `error_rate_elevation` | Error rate spiked beyond tolerance |
+| `error_rate_reduction` | Error rate dropped (positive) |
+| `throughput_collapse` | Traffic fell below tolerance |
+| `throughput_surge` | Traffic spiked above tolerance |
+| `saturation_approach` | CPU/memory approaching limits |
+| `availability_drop` | Availability fell below tolerance |
+| `distribution_shift` | Mixed signals (e.g., p50 stable but p99 diverged -- tail issue) |
+| `no_significant_drift` | All indicators within tolerance bands |
 
-For negative drift, the LLM produces a prioritized remediation plan:
-- **Immediate**: blast radius assessment, rollback consideration
-- **Short-term**: targeted investigation based on telemetry patterns
-- **Long-term**: prevention through monitoring, capacity planning, or architectural changes
+For negative drift, remediation is prioritized and grounded in telemetry:
 
-Each recommendation includes an evidence basis and a verification method.
+- **Immediate**: assess blast radius, consider rollback if recent deployment. "p99 breached at 22.5x while p50 shifted only 1.2x -- this is a tail-latency issue, not systemic. Check slow queries and downstream timeouts."
+- **Short-term**: targeted investigation. "Throughput down + error rate up correlates with the CPU saturation approaching 85% -- investigate resource limits before adding replicas."
+- **Long-term**: prevention. "High latency variance (stddev 25% of p99) suggests heterogeneous workload sizes -- consider job queue prioritization."
+
+Each recommendation includes a verification method: "Re-run drift detection after 1h to verify p99 returns within tolerance band [300ms, 700ms]."
+
+For positive drift, the tool recommends updating the baseline and suggests tighter SLO targets with specific values.
+
+## Fits into the RHDP toolchain
+
+sloscope complements the broader RHDP operations toolkit:
+
+- **LiftOff** validates that a lab CAN run on the target hardware (5-gate readiness pipeline)
+- **sloscope** validates that it IS running reliably over time (evidence-based SLOs + drift detection)
+- **NovaScan** monitors cluster capacity (can we fit more labs?)
+- **DarkScope** scans for security issues
+
+Together they cover the lifecycle: readiness, reliability, capacity, security.
 
 ## Architecture
 
 ```
 cmd/sloscope/              Go CLI (generate + drift subcommands)
 internal/
-  config/                  Environment variable resolution
-  prom/                    Prometheus/Thanos query client
-  pipeline/                Go-to-Python subprocess orchestration
-  drift/                   Baseline loading, live sampling, deviation input
+  config/                  Environment variable resolution (no secrets on disk)
+  prom/                    Prometheus/Thanos query client (bearer token auth)
+  pipeline/                Go-to-Python subprocess orchestration (JSON stdin/stdout)
+  drift/                   Baseline loading + validation, deviation input assembly
   render/                  OpenSLO, Prometheus rules, audit bundle, drift report
-  schema/                  JSON schema validation (go:embed)
+  schema/                  JSON schema validation (go:embed from analysis/schemas/)
 analysis/
-  baseline.py              Deterministic baseline computation
-  deviation.py             Deterministic deviation + rule-based classifier
-  propose.py               LLM SLO proposal stage
-  classify.py              LLM drift classification stage
-  consistency.py           Shared consistency validation (directionality, margins)
-  serialize.py             Canonical JSON serializer (sorted keys, fixed floats)
-  schemas/                 JSON schemas (single source of truth)
-  evals/                   Eval fixtures, rubrics, recorded responses, runners
-  tests/                   pytest test suite
-testdata/                  Recorded Prometheus fixtures for hermetic tests
+  baseline.py              Deterministic baseline computation (histogram percentiles, rates)
+  deviation.py             Deterministic deviation + rule-based first-pass classifier
+  propose.py               LLM SLO proposal stage (repair loop, consistency checks)
+  classify.py              LLM drift classification (evidence-based remediation plans)
+  consistency.py           Shared validation: directionality, margins, looseness bounds
+  serialize.py             Canonical JSON (sorted keys, 2-space indent, 6 sig digits)
+  schemas/                 JSON schemas (single source of truth, embedded in Go via go:embed)
+  evals/                   Eval fixtures (13 scenarios), rubrics, recorded responses
+  tests/                   pytest suite (347 tests)
+testdata/                  Recorded Prometheus fixtures for hermetic CI
 scripts/
-  preflight.sh             Environment readiness checks
-  verify.sh                Full hermetic verification (25 checks)
+  preflight.sh             Environment readiness (Go, Python, Prometheus, LLM, promtool)
+  verify.sh                Full hermetic verification: 25 checks, no live deps needed
 ```
 
 ## Development methodology
 
-Three disciplines, each governing the part of the system it fits:
+Three disciplines govern the codebase, each matched to the code it fits:
 
-- **TDD** governs deterministic code: baseline math, deviation computation, renderers. Failing test first, implement to green.
-- **CDD** governs boundaries: JSON schemas frozen before implementation, validated on both Go and Python sides. The baseline artifact is a versioned contract.
-- **EDD** governs LLM stages: eval suites with fixtures, rubrics, hard gates, and scored dimensions. Prompts developed against the suite until the eval grid is green.
+- **TDD** -- deterministic code (baseline math, deviation, renderers): failing test first, implement to green
+- **CDD** -- boundaries (5 JSON schemas, Go/Python subprocess contract): schema frozen before implementation, validated on both sides
+- **EDD** -- LLM stages (proposal + drift classification): eval suites with hard gates and scored dimensions, prompts tuned until the grid is green
+
+Red/green matrix enforced by `scripts/verify.sh`. No milestone starts until the previous is green.
 
 ## Testing
 
 ```bash
-# Preflight (environment checks)
+# Preflight (checks Go, Python, deps, connectivity)
 bash scripts/preflight.sh
 
-# Full hermetic verification (no live cluster or LLM needed)
+# Full hermetic verification (no cluster, no LLM, no network)
 make build && bash scripts/verify.sh
 
-# Unit tests only
-make test
-
-# Go tests only
-go test ./... -v
-
-# Python tests only
-python3 -m pytest analysis/tests/ -v
+# Unit tests
+make test                              # Go + Python
+go test ./... -v                       # Go only
+python3 -m pytest analysis/tests/ -v   # Python only
 ```
 
-**Test coverage:** 416 tests (69 Go + 347 Python), 25 verification checks, eval grids across 13 scenarios (3 proposal + 10 drift).
+416 tests (69 Go + 347 Python). 25 verification checks. Eval grids across 13 scenarios (3 proposal + 10 drift). Validated live against `granite-3-2-8b-instruct` on the MAAS GPU tier.
 
 ## Schemas
 
-All JSON schemas live in `analysis/schemas/` and are the single source of truth:
-
-| Schema | Version | Description |
-|--------|---------|-------------|
-| `evidence.schema.json` | 1 | Raw telemetry from Prometheus |
-| `baseline.schema.json` | 1 | Deterministic empirical baseline (cross-doc contract) |
-| `proposal.schema.json` | 2 | LLM SLO proposal with target_op and headroom |
+| Schema | Version | Purpose |
+|--------|---------|---------|
+| `evidence.schema.json` | 1 | Raw Prometheus telemetry with provenance |
+| `baseline.schema.json` | 1 | Deterministic empirical baseline (versioned contract for drift) |
+| `proposal.schema.json` | 2 | LLM SLO proposal with target_op, headroom, maturity tier |
 | `drift-signal.schema.json` | 1 | Deterministic deviation measurements |
 | `drift-report.schema.json` | 1 | LLM drift classification with remediation plan |
-
-## License
-
-See repository for license details.
