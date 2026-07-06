@@ -36,19 +36,20 @@ def check_consistency(proposal, baseline):
     Returns a list of error strings (empty if all consistent).
     Checks:
     1. target_op matches expected direction for sli_type
-    2. Target is not tighter than observed without requires_review
-    3. Target is not excessively loose (>5 stddev from observed)
-    4. Target is not exactly equal to observed (must have margin)
-    5. All five SLI types are handled
+    2. slo_target must be tighter than observed (aspirational)
+    3. sla_target must be looser than observed (commitment with headroom)
+    4. Neither target may equal observed
+    5. sla_target must not be excessively loose (>5 stddev from observed)
+    6. slo_target must be between observed and sla_target in ambition
     """
     errors = []
     indicators = baseline.get("indicators", {})
 
     for slo in proposal.get("slos", []):
         sli_type = slo.get("sli_type", "")
-        target = slo.get("target", 0)
+        slo_target = slo.get("slo_target", 0)
+        sla_target = slo.get("sla_target", 0)
         target_op = slo.get("target_op", "")
-        requires_review = slo.get("requires_review", False)
         name = slo.get("sli_name", "unnamed")
 
         # Check 1: target_op direction
@@ -64,28 +65,59 @@ def check_consistency(proposal, baseline):
         if observed is None:
             continue  # Can't check without observed data
 
-        # Check 2: Target not tighter than observed without requires_review
-        if _is_tighter(target, observed, sli_type) and not requires_review:
+        # Check 2: slo_target must be tighter than observed
+        if not _is_tighter(slo_target, observed, sli_type):
             errors.append(
-                f"SLO '{name}': target {target} is tighter than observed "
-                f"{observed} for {sli_type} without requires_review flag"
+                f"SLO '{name}': slo_target {slo_target} is not tighter than "
+                f"observed {observed} for {sli_type} — SLO must be aspirational"
             )
 
-        # Check 3: Target not excessively loose
+        # Check 3: sla_target must be looser than observed
+        if _is_tighter(sla_target, observed, sli_type):
+            errors.append(
+                f"SLO '{name}': sla_target {sla_target} is tighter than "
+                f"observed {observed} for {sli_type} — SLA must have headroom"
+            )
+
+        # Check 4: Neither target may equal observed
+        if slo_target == observed:
+            errors.append(
+                f"SLO '{name}': slo_target {slo_target} equals observed value "
+                f"{observed} — must include margin"
+            )
+        if sla_target == observed:
+            errors.append(
+                f"SLO '{name}': sla_target {sla_target} equals observed value "
+                f"{observed} — must include margin/headroom"
+            )
+
+        # Check 5: sla_target not excessively loose
         if stddev and stddev > 0:
-            looseness = _looseness_in_stddev(target, observed, stddev, sli_type)
+            looseness = _looseness_in_stddev(sla_target, observed, stddev, sli_type)
             if looseness > MAX_LOOSENESS_STDDEV:
                 errors.append(
-                    f"SLO '{name}': target {target} is excessively loose "
+                    f"SLO '{name}': sla_target {sla_target} is excessively loose "
                     f"({looseness:.1f} stddev from observed {observed})"
                 )
 
-        # Check 4: Target not exactly equal to observed
-        if target == observed:
-            errors.append(
-                f"SLO '{name}': target {target} equals observed value "
-                f"{observed} — must include margin/headroom"
-            )
+        # Check 6: slo_target must be between observed and sla_target
+        op = EXPECTED_OPS.get(sli_type, "lte")
+        if op == "lte":
+            # lower is better: slo_target < observed < sla_target
+            if not (slo_target < observed <= sla_target or slo_target <= observed < sla_target):
+                if slo_target >= sla_target:
+                    errors.append(
+                        f"SLO '{name}': slo_target {slo_target} must be less than "
+                        f"sla_target {sla_target} for lte metric"
+                    )
+        else:
+            # higher is better: sla_target < observed < slo_target
+            if not (sla_target < observed <= slo_target or sla_target <= observed < slo_target):
+                if slo_target <= sla_target:
+                    errors.append(
+                        f"SLO '{name}': slo_target {slo_target} must be greater than "
+                        f"sla_target {sla_target} for gte metric"
+                    )
 
     return errors
 
@@ -96,20 +128,23 @@ def check_consistency_bool(proposal, baseline):
 
 
 def check_margin_quality(proposal, baseline):
-    """Scored dimension: verify targets include appropriate margin.
-    Returns True if all targets have non-zero margin from observed.
+    """Scored dimension: verify both targets include appropriate margin from observed.
+    Returns True if all slo_target and sla_target values differ from observed.
     """
     indicators = baseline.get("indicators", {})
 
     for slo in proposal.get("slos", []):
         sli_type = slo.get("sli_type", "")
-        target = slo.get("target", 0)
+        slo_target = slo.get("slo_target", 0)
+        sla_target = slo.get("sla_target", 0)
 
         observed, _ = _get_observed_and_stddev(sli_type, indicators)
         if observed is None:
             continue
 
-        if target == observed:
+        if slo_target == observed:
+            return False
+        if sla_target == observed:
             return False
 
     return True

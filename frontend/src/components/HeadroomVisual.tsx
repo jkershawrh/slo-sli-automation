@@ -7,21 +7,23 @@ interface HeadroomVisualProps {
   unit: string
   targetOp: 'lte' | 'gte'
   marginRationale: string
+  sloTarget?: number
 }
 
-export function HeadroomVisual({ observed, target, margin, unit, targetOp, marginRationale }: HeadroomVisualProps) {
-  // For lte: observed is left, target is right (target > observed = good)
-  // For gte: target is left, observed is right (target < observed = good)
+export function HeadroomVisual({ observed, target, margin, unit, targetOp, marginRationale, sloTarget }: HeadroomVisualProps) {
+  // For lte: SLO (left, tighter) → Observed (middle) → SLA Ceiling (right, looser)
+  // For gte: SLA Floor (left, looser) → Observed (middle) → SLO (right, tighter)
   const isLte = targetOp === 'lte'
-  const leftVal = isLte ? observed : target
-  const rightVal = isLte ? target : observed
-  const leftLabel = isLte ? 'Observed' : 'Target'
-  const rightLabel = isLte ? 'Target' : 'Observed'
+  const leftVal = isLte ? (sloTarget ?? observed) : target
+  const rightVal = isLte ? target : (sloTarget ?? observed)
+  const leftLabel = isLte ? 'SLO' : 'SLA Floor'
+  const rightLabel = isLte ? 'SLA Ceiling' : 'SLO'
 
   // Compute bar width ratios
   const maxVal = rightVal * 1.2
   const leftPct = (leftVal / maxVal) * 100
   const rightPct = (rightVal / maxVal) * 100
+  const obsPct = sloTarget != null ? (observed / maxVal) * 100 : undefined
 
   return (
     <motion.div
@@ -43,7 +45,7 @@ export function HeadroomVisual({ observed, target, margin, unit, targetOp, margi
         {/* Background bar */}
         <div style={{ position: 'absolute', top: 14, left: 0, right: 0, height: 12, background: 'var(--surface-1)', borderRadius: 6 }} />
 
-        {/* Margin band */}
+        {/* Margin band (SLO to SLA range) */}
         <motion.div
           initial={{ width: 0 }}
           animate={{ width: `${rightPct - leftPct}%` }}
@@ -59,14 +61,21 @@ export function HeadroomVisual({ observed, target, margin, unit, targetOp, margi
           }}
         />
 
-        {/* Observed marker */}
+        {/* Left marker (SLO for lte, SLA Floor for gte) */}
         <div style={{ position: 'absolute', left: `${leftPct}%`, top: 0, transform: 'translateX(-50%)' }}>
-          <div style={{ width: 3, height: 40, background: isLte ? 'var(--rh-blue)' : 'var(--rh-green)', borderRadius: 1 }} />
+          <div style={{ width: 3, height: 40, background: isLte ? 'var(--rh-teal)' : 'var(--rh-blue)', borderRadius: 1 }} />
         </div>
 
-        {/* Target marker */}
+        {/* Observed marker (shown in the middle when sloTarget is provided) */}
+        {obsPct != null && (
+          <div style={{ position: 'absolute', left: `${obsPct}%`, top: 0, transform: 'translateX(-50%)' }}>
+            <div style={{ width: 3, height: 40, background: 'var(--text-primary)', borderRadius: 1, opacity: 0.6 }} />
+          </div>
+        )}
+
+        {/* Right marker (SLA Ceiling for lte, SLO for gte) */}
         <div style={{ position: 'absolute', left: `${rightPct}%`, top: 0, transform: 'translateX(-50%)' }}>
-          <div style={{ width: 3, height: 40, background: isLte ? 'var(--rh-green)' : 'var(--rh-blue)', borderRadius: 1, opacity: 0.8 }} />
+          <div style={{ width: 3, height: 40, background: isLte ? 'var(--rh-blue)' : 'var(--rh-teal)', borderRadius: 1, opacity: 0.8 }} />
         </div>
       </div>
 
@@ -78,6 +87,14 @@ export function HeadroomVisual({ observed, target, margin, unit, targetOp, margi
             {leftVal}{unit}
           </span>
         </div>
+        {obsPct != null && (
+          <div>
+            <span style={{ color: 'var(--text-dim)' }}>Observed: </span>
+            <span style={{ color: 'var(--text-primary)', fontFamily: "'Red Hat Mono', monospace", fontWeight: 600 }}>
+              {observed}{unit}
+            </span>
+          </div>
+        )}
         <div style={{ color: 'var(--rh-green)', fontFamily: "'Red Hat Mono', monospace", fontSize: 11 }}>
           margin: {margin}{unit}
         </div>

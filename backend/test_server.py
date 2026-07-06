@@ -151,7 +151,7 @@ class TestPropose:
             r = client.post("/api/v1/propose", json={"baseline": bl})
             assert r.status_code == 200
             data = r.json()
-            assert data["schema_version"] == 2
+            assert data["schema_version"] == 3
             assert len(data["slos"]) >= 1
             for slo in data["slos"]:
                 assert "target_op" in slo

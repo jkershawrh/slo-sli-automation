@@ -20,7 +20,8 @@ type SLO struct {
 	SLIName        string         `json:"sli_name"`
 	SLIType        string         `json:"sli_type"`
 	SLIDefinition  string         `json:"sli_definition"`
-	Target         float64        `json:"target"`
+	SLOTarget      float64        `json:"slo_target"`
+	SLATarget      float64        `json:"sla_target"`
 	TargetOp       string         `json:"target_op"`
 	TargetUnit     string         `json:"target_unit"`
 	ErrorBudgetPct float64        `json:"error_budget_percent"`
@@ -88,10 +89,10 @@ func RenderOpenSLO(proposalJSON json.RawMessage) (string, error) {
 			// Latency SLOs: target is the ratio from error budget, value is the threshold
 			sb.WriteString(fmt.Sprintf("      target: %g\n", (100.0-slo.ErrorBudgetPct)/100.0))
 			sb.WriteString(fmt.Sprintf("      op: %s\n", slo.TargetOp))
-			sb.WriteString(fmt.Sprintf("      value: %g\n", slo.Target))
+			sb.WriteString(fmt.Sprintf("      value: %g\n", slo.SLOTarget))
 		} else {
 			// Non-latency SLOs: target is the value directly
-			sb.WriteString(fmt.Sprintf("      target: %g\n", slo.Target))
+			sb.WriteString(fmt.Sprintf("      target: %g\n", slo.SLOTarget))
 			if slo.TargetOp != "" {
 				sb.WriteString(fmt.Sprintf("      op: %s\n", slo.TargetOp))
 			}
