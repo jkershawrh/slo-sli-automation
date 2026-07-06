@@ -9,8 +9,7 @@ interface GoldenSignalCardProps {
 }
 
 export function GoldenSignalCard({ signal, description, targetOp, example, color }: GoldenSignalCardProps) {
-  const arrow = targetOp === 'lte' ? '↓' : '↑'  // down or up arrow
-  const opLabel = targetOp === 'lte' ? 'at or below' : 'at or above'
+  const arrow = targetOp === 'lte' ? '↓' : '↑'
 
   return (
     <motion.div
@@ -57,15 +56,17 @@ export function GoldenSignalCard({ signal, description, targetOp, example, color
           </div>
         </div>
       </div>
-      <div style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-        {description}
-      </div>
+      {description && (
+        <div style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+          {description}
+        </div>
+      )}
       <div style={{
         fontSize: 13,
         color: 'var(--text-dim)',
-        fontStyle: 'italic',
+        fontFamily: "'Red Hat Mono', monospace",
       }}>
-        {opLabel}: {example}
+        {example}
       </div>
     </motion.div>
   )

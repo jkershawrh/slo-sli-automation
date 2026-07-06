@@ -7,7 +7,7 @@ import { GoldenSignalCard } from './components/GoldenSignalCard';
 import { HeadroomVisual } from './components/HeadroomVisual';
 import { FlowDescription } from './components/FlowDescription';
 import { DriftTimeline } from './components/DriftTimeline';
-import { ToolchainDiagram } from './components/ToolchainDiagram';
+// ToolchainDiagram available but not used in demo acts — sloscope stands on its own
 import { MaturityLadder } from './components/MaturityLadder';
 import { LabWizard } from './components/LabWizard';
 import { api } from './api/client';
@@ -38,7 +38,7 @@ export default function App() {
   const [renderOutput, setRenderOutput] = useState<RenderOutput | null>(null);
   const [driftSignal, setDriftSignal] = useState<DriftSignal | null>(null);
   const [driftReport, setDriftReport] = useState<DriftReport | null>(null);
-  const [liveEvidence, setLiveEvidence] = useState<Evidence | null>(null);
+  // liveEvidence state removed — drift demo uses pre-computed fixtures directly
 
   // Step statuses
   const [evidenceStatus, setEvidenceStatus] = useState<Status>('idle');
@@ -104,11 +104,12 @@ export default function App() {
     if (!baseline) return;
     setDriftStatus('running');
     try {
-      // Collect live evidence (loads latency regression fixture)
-      const liveCall = await api.collectEvidence('checkout-api', 'payments');
-      setLiveEvidence(liveCall.response.data);
-      const driftCall = await api.computeDrift(baseline, liveCall.response.data);
-      setDriftSignal(driftCall.response.data);
+      // Load the latency regression drift fixture as "live" evidence
+      // This simulates a service whose p99 latency has regressed significantly
+      const liveCall = await api.getDriftFixture('latency_regression');
+      const driftFixture = liveCall.response.data;
+      // The drift fixture IS the pre-computed drift signal — use it directly
+      setDriftSignal(driftFixture);
       setDriftStatus('done');
     } catch {
       setDriftStatus('error');
@@ -198,80 +199,81 @@ export default function App() {
       </div>
     ),
 
-    // 3: The Proof
+    // 3: The Four Golden Signals — just the signals, clean
     () => (
-      <div style={{ textAlign: 'center' }}>
-        <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-          transition={{ type: 'spring', stiffness: 200, damping: 15 }}>
-          <div style={{ fontSize: 120, fontWeight: 800, color: 'var(--rh-red)', fontFamily: 'Red Hat Display, sans-serif', lineHeight: 1 }}>
-            416
-          </div>
-        </motion.div>
-        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}
-          style={{ fontSize: 24, color: 'var(--text-dim)', marginTop: 8 }}>
-          tests
-        </motion.p>
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}
-          style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginTop: 32, maxWidth: 600, margin: '32px auto 0' }}>
-          <MetricCard label="verification checks" value="25" color="var(--rh-blue)" />
-          <MetricCard label="eval scenarios" value="13" color="var(--rh-teal)" />
-          <MetricCard label="fabricated numbers" value="0" color="var(--rh-green)" />
-        </motion.div>
-      </div>
-    ),
-
-    // 4: The Four Golden Signals
-    () => (
-      <div style={{ maxWidth: 700 }}>
+      <div style={{ textAlign: 'center', maxWidth: 650 }}>
         <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-          style={{ fontSize: 28, fontWeight: 700, fontFamily: 'Red Hat Display, sans-serif', textAlign: 'center', marginBottom: 8 }}>
+          style={{ fontSize: 36, fontWeight: 800, fontFamily: "'Red Hat Display', sans-serif", lineHeight: 1.3, marginBottom: 40 }}>
           The Four Golden Signals
-        </motion.p>
-        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}
-          style={{ fontSize: 16, color: 'var(--text-dim)', textAlign: 'center', marginBottom: 32 }}>
-          Direction matters.
         </motion.p>
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
           style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <GoldenSignalCard signal="Latency" description="Response time must stay at or below threshold" targetOp="lte" example="p99 <= 600ms" color="var(--rh-blue)" />
-          <GoldenSignalCard signal="Errors" description="Error rate must stay at or below threshold" targetOp="lte" example="error_rate <= 0.003" color="var(--rh-red)" />
-          <GoldenSignalCard signal="Traffic" description="Throughput must stay at or above threshold" targetOp="gte" example="rps >= 4.0" color="var(--rh-green)" />
-          <GoldenSignalCard signal="Saturation" description="Resource usage must stay at or below threshold" targetOp="lte" example="cpu <= 0.80" color="var(--rh-orange)" />
+          <GoldenSignalCard signal="Latency" description="" targetOp="lte" example="p99 <= 600ms" color="var(--rh-blue)" />
+          <GoldenSignalCard signal="Errors" description="" targetOp="lte" example="error_rate <= 0.3%" color="var(--rh-red)" />
+          <GoldenSignalCard signal="Traffic" description="" targetOp="gte" example="rps >= 4.0" color="var(--rh-green)" />
+          <GoldenSignalCard signal="Saturation" description="" targetOp="lte" example="cpu <= 80%" color="var(--rh-orange)" />
         </motion.div>
       </div>
     ),
 
-    // 5: Incremental, not aspirational
+    // 4: The trap — visual contrast, not paragraphs
     () => (
-      <div style={{ maxWidth: 700 }}>
+      <div style={{ textAlign: 'center', maxWidth: 700 }}>
         <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-          style={{ fontSize: 28, fontWeight: 700, fontFamily: 'Red Hat Display, sans-serif', textAlign: 'center', marginBottom: 32 }}>
-          Incremental, not aspirational
+          style={{ fontSize: 36, fontWeight: 800, fontFamily: "'Red Hat Display', sans-serif", lineHeight: 1.3, marginBottom: 40 }}>
+          The aspirational trap.
         </motion.p>
-        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }}
-          style={{ padding: 20, background: 'var(--surface-1)', borderLeft: '4px solid var(--rh-red)', borderRadius: '0 10px 10px 0', marginBottom: 16 }}>
-          <div style={{ fontSize: 11, fontFamily: 'Red Hat Mono, monospace', color: 'var(--text-disabled)', letterSpacing: 1, marginBottom: 8 }}>BEFORE</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, fontSize: 14 }}>
-            <div><span style={{ color: 'var(--text-dim)' }}>Target:</span> <strong>99.9%</strong></div>
-            <div><span style={{ color: 'var(--text-dim)' }}>Observed:</span> <strong>93.2%</strong></div>
-            <div><span style={{ color: 'var(--text-dim)' }}>Gap:</span> <strong>6.7pp</strong></div>
-            <div><span style={{ color: 'var(--text-dim)' }}>Result:</span> <strong style={{ color: 'var(--rh-red)' }}>permanent alert fatigue</strong></div>
+
+        {/* The bad target */}
+        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}
+          style={{ display: 'flex', justifyContent: 'center', gap: 32, marginBottom: 16 }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontFamily: "'Red Hat Mono', monospace", fontSize: 11, color: 'var(--text-disabled)', letterSpacing: 1 }}>TARGET</div>
+            <div style={{ fontFamily: "'Red Hat Display', sans-serif", fontSize: 56, fontWeight: 800, color: 'var(--rh-red)' }}>99.9%</div>
+          </div>
+          <div style={{ alignSelf: 'center', fontSize: 28, color: 'var(--text-disabled)' }}>vs</div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontFamily: "'Red Hat Mono', monospace", fontSize: 11, color: 'var(--text-disabled)', letterSpacing: 1 }}>OBSERVED</div>
+            <div style={{ fontFamily: "'Red Hat Display', sans-serif", fontSize: 56, fontWeight: 800, color: 'var(--text-primary)' }}>93.2%</div>
           </div>
         </motion.div>
-        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.6 }}
-          style={{ padding: 20, background: 'var(--surface-1)', borderLeft: '4px solid var(--rh-green)', borderRadius: '0 10px 10px 0' }}>
-          <div style={{ fontSize: 11, fontFamily: 'Red Hat Mono, monospace', color: 'var(--text-disabled)', letterSpacing: 1, marginBottom: 8 }}>AFTER</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, fontSize: 14 }}>
-            <div><span style={{ color: 'var(--text-dim)' }}>Target:</span> <strong>89.2%</strong></div>
-            <div><span style={{ color: 'var(--text-dim)' }}>Observed:</span> <strong>93.2%</strong></div>
-            <div><span style={{ color: 'var(--text-dim)' }}>Headroom:</span> <strong>2 stddev</strong></div>
-            <div><span style={{ color: 'var(--text-dim)' }}>Result:</span> <strong style={{ color: 'var(--rh-green)' }}>achievable, defensible, promotable</strong></div>
+        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}
+          style={{ fontSize: 18, color: 'var(--rh-red)', fontWeight: 600, marginBottom: 40 }}>
+          Breached from day one. Alerts ignored. Real incidents missed.
+        </motion.p>
+
+        {/* The earned target */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }}
+          style={{ padding: '20px 0', borderTop: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 20, alignItems: 'center' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: "'Red Hat Mono', monospace", fontSize: 10, color: 'var(--text-disabled)', letterSpacing: 1 }}>START HERE</div>
+              <div style={{ fontFamily: "'Red Hat Display', sans-serif", fontSize: 32, fontWeight: 800, color: 'var(--rh-teal)' }}>89%</div>
+            </div>
+            <div style={{ color: 'var(--text-disabled)', fontSize: 18 }}>{'→'}</div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: "'Red Hat Mono', monospace", fontSize: 10, color: 'var(--text-disabled)', letterSpacing: 1 }}>&nbsp;</div>
+              <div style={{ fontFamily: "'Red Hat Display', sans-serif", fontSize: 32, fontWeight: 800, color: 'var(--rh-teal)' }}>91%</div>
+            </div>
+            <div style={{ color: 'var(--text-disabled)', fontSize: 18 }}>{'→'}</div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: "'Red Hat Mono', monospace", fontSize: 10, color: 'var(--text-disabled)', letterSpacing: 1 }}>&nbsp;</div>
+              <div style={{ fontFamily: "'Red Hat Display', sans-serif", fontSize: 32, fontWeight: 800, color: 'var(--rh-green)' }}>93.5%</div>
+            </div>
+            <div style={{ color: 'var(--text-disabled)', fontSize: 18 }}>{'→'}</div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: "'Red Hat Mono', monospace", fontSize: 10, color: 'var(--text-disabled)', letterSpacing: 1 }}>EARNED</div>
+              <div style={{ fontFamily: "'Red Hat Display', sans-serif", fontSize: 32, fontWeight: 800, color: 'var(--rh-green)' }}>96%</div>
+            </div>
           </div>
+          <p style={{ fontSize: 16, color: 'var(--text-secondary)', marginTop: 16 }}>
+            Each target is earned, not wished for.
+          </p>
         </motion.div>
       </div>
     ),
 
-    // 6: CTA
+    // 5: CTA
     () => (
       <div style={{ textAlign: 'center' }}>
         <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
@@ -719,11 +721,9 @@ export default function App() {
                     dominantSignal={driftSignal.dominant_signal}
                     allBreached={driftSignal.all_breached_indicators}
                   />
-                  {liveEvidence && (
-                    <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-disabled)', fontFamily: 'Red Hat Mono, monospace' }}>
-                      Evaluated at: {driftSignal.evaluated_at} | Window: {driftSignal.evaluation_window}
-                    </div>
-                  )}
+                  <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-disabled)', fontFamily: "'Red Hat Mono', monospace" }}>
+                    Evaluated at: {driftSignal.evaluated_at} | Window: {driftSignal.evaluation_window}
+                  </div>
                 </div>
               )}
             </StepCard>
@@ -822,28 +822,68 @@ export default function App() {
       case 6:
         return (
           <div>
-            {/* Toolchain */}
-            <div style={{ marginBottom: 24 }}>
-              <ToolchainDiagram activeStage="sloscope" />
-            </div>
+            {/* What sloscope gives you operationally */}
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+              style={{ marginBottom: 24 }}>
+              <p style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Red Hat Display', sans-serif", marginBottom: 16 }}>
+                What this means for your operations
+              </p>
 
-            {/* Maturity ladder */}
-            <div style={{ marginBottom: 24 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {/* For infrastructure */}
+                <div style={{ padding: 16, background: 'var(--surface-1)', borderRadius: 8, borderLeft: '4px solid var(--rh-blue)' }}>
+                  <div style={{ fontSize: 11, fontFamily: "'Red Hat Mono', monospace", color: 'var(--rh-blue)', letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 6 }}>
+                    For infrastructure teams
+                  </div>
+                  <div style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                    Know when a Xeon 6 node is approaching saturation before inference latency triples.
+                    Set CPU and memory SLOs grounded in observed utilization, not guesswork.
+                    When you consolidate from GPU to CPU-only, sloscope tells you if the service is still meeting its commitments.
+                  </div>
+                </div>
+
+                {/* For services */}
+                <div style={{ padding: 16, background: 'var(--surface-1)', borderRadius: 8, borderLeft: '4px solid var(--rh-green)' }}>
+                  <div style={{ fontSize: 11, fontFamily: "'Red Hat Mono', monospace", color: 'var(--rh-green)', letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 6 }}>
+                    For service owners
+                  </div>
+                  <div style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                    Stop setting availability targets you cannot meet. Start with what you can prove.
+                    Every SLO comes with a rationale that explains why it was chosen and what to fix to tighten it.
+                    When latency regresses after a deployment, sloscope tells you whether it is systemic or tail-only, and what to investigate first.
+                  </div>
+                </div>
+
+                {/* For demos/events */}
+                <div style={{ padding: 16, background: 'var(--surface-1)', borderRadius: 8, borderLeft: '4px solid var(--rh-orange)' }}>
+                  <div style={{ fontSize: 11, fontFamily: "'Red Hat Mono', monospace", color: 'var(--rh-orange)', letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 6 }}>
+                    For Summit Connect
+                  </div>
+                  <div style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                    Run drift detection before every event. Know if your demo service has degraded since the last baseline.
+                    Get a prioritized remediation plan — what to fix immediately, what to investigate, what to address long-term — instead of scrambling during setup.
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Maturity journey */}
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
+              style={{ marginBottom: 24 }}>
+              <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-dim)', marginBottom: 12, textAlign: 'center' }}>
+                SLOs that start achievable and tighten as you earn the right
+              </p>
               <MaturityLadder current="growing" />
-            </div>
-
-            {/* Summary metrics */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 24 }}>
-              <MetricCard label="tests" value="416" color="var(--rh-red)" />
-              <MetricCard label="verification checks" value="25" color="var(--rh-blue)" />
-              <MetricCard label="fabricated numbers" value="0" color="var(--rh-green)" />
-            </div>
+            </motion.div>
 
             {/* CTA */}
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}
               style={{ textAlign: 'center', padding: 24, background: 'var(--surface-1)', borderRadius: 10, border: '1px solid var(--rh-red)40' }}>
-              <p style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>
-                The complete lifecycle: evidence, baseline, proposal, artifacts, drift, remediation.
+              <p style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
+                Your turn.
+              </p>
+              <p style={{ fontSize: 14, color: 'var(--text-dim)', marginBottom: 16 }}>
+                Pick a service. See its baseline. Get an SLO you can actually meet. Inject drift and see the response.
               </p>
               <button onClick={() => setMode('lab')}
                 style={{ background: 'var(--rh-red)', border: 'none', color: '#fff', padding: '12px 36px', borderRadius: 8, fontSize: 16, fontWeight: 700, cursor: 'pointer' }}>
