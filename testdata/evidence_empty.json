@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "service": "minimal-service",
+  "namespace": "default",
+  "lookback_window": "7d",
+  "collected_at": "2026-07-05T12:00:00Z",
+  "coverage_ratio": 0.45,
+  "series": {
+    "latency_histogram": {
+      "metric_name": "http_request_duration_seconds_bucket",
+      "buckets": [
+        { "le": 0.05, "count": 50 },
+        { "le": 0.1, "count": 80 },
+        { "le": 0.25, "count": 95 },
+        { "le": 0.5, "count": 100 },
+        { "le": "+Inf", "count": 100 }
+      ],
+      "total_count": 100,
+      "sum": 5.2
+    },
+    "request_total": {
+      "metric_name": "http_requests_total",
+      "total": 100,
+      "rate_samples": [
+        { "timestamp": "2026-06-28T12:00:00Z", "value": 0.002 },
+        { "timestamp": "2026-06-29T12:00:00Z", "value": 0.001 },
+        { "timestamp": "2026-06-30T12:00:00Z", "value": 0.003 }
+      ]
+    },
+    "error_total": {
+      "metric_name": "http_requests_errors_total",
+      "total": 0
+    }
+  },
+  "provenance": {
+    "prometheus_endpoint": "https://thanos-querier.openshift-monitoring.svc:9091",
+    "query_timestamps": {
+      "start": "2026-06-28T12:00:00Z",
+      "end": "2026-07-05T12:00:00Z"
+    },
+    "queries": {
+      "latency": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{service=\"minimal-service\",namespace=\"default\"}[5m])) by (le))",
+      "request_total": "sum(increase(http_requests_total{service=\"minimal-service\",namespace=\"default\"}[7d]))"
+    }
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "proposal.schema.json",
+  "title": "SLO Proposal",
+  "description": "LLM-generated SLO proposal grounded in baseline evidence",
+  "type": "object",
+  "required": ["schema_version", "service", "baseline_schema_version", "slos"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 2 },
+    "service": { "type": "string", "minLength": 1 },
+    "baseline_schema_version": { "type": "integer" },
+    "maturity_tier": {
+      "type": "string",
+      "enum": ["new", "growing", "mature"],
+      "description": "Service maturity tier affecting target aggressiveness"
+    },
+    "slos": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["sli_name", "sli_type", "sli_definition", "target", "target_op", "error_budget_percent", "burn_rate_policy", "rationale"],
+        "properties": {
+          "sli_name": { "type": "string" },
+          "sli_type": { "type": "string", "enum": ["latency", "availability", "throughput", "saturation", "error_rate"] },
+          "sli_definition": { "type": "string" },
+          "target": { "type": "number" },
+          "target_op": {
+            "type": "string",
+            "enum": ["lte", "gte"],
+            "description": "Comparison operator: lte means at-or-below target is good (latency, error_rate, saturation), gte means at-or-above target is good (availability, throughput)"
+          },
+          "target_unit": { "type": "string" },
+          "error_budget_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+          "burn_rate_policy": {
+            "type": "object",
+            "required": ["windows"],
+            "properties": {
+              "windows": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": ["long_window", "short_window", "burn_rate", "severity"],
+                  "properties": {
+                    "long_window": { "type": "string" },
+                    "short_window": { "type": "string" },
+                    "burn_rate": { "type": "number", "minimum": 0 },
+                    "severity": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "rationale": { "type": "string", "minLength": 1 },
+          "headroom": {
+            "type": "object",
+            "properties": {
+              "observed_value": { "type": "number" },
+              "margin": { "type": "number" },
+              "margin_rationale": { "type": "string" }
+            },
+            "description": "Documents the margin between observed performance and the proposed target"
+          },
+          "requires_review": { "type": "boolean", "default": false },
+          "review_reason": { "type": "string" }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "service": "batch-processor",
+  "namespace": "data-pipeline",
+  "lookback_window": "7d",
+  "generated_at": "2026-07-01T00:00:00Z",
+  "indicators": {
+    "latency": {
+      "p50_ms": 8000.0,
+      "p90_ms": 22000.0,
+      "p95_ms": 26000.0,
+      "p99_ms": 30000.0,
+      "stddev_ms": 7500.0,
+      "sample_count": 6048,
+      "source_query": "histogram_quantile(0.99, rate(job_duration_seconds_bucket[5m]))"
+    },
+    "error_rate": {
+      "ratio": 0.01,
+      "stddev": 0.004,
+      "error_count": 60,
+      "total_count": 6048,
+      "source_query": "sum(rate(jobs_total{status=\"failed\"}[5m])) / sum(rate(jobs_total[5m]))"
+    },
+    "availability": {
+      "ratio": 0.99,
+      "definition": "1 - (error_count / total_count)"
+    },
+    "throughput": {
+      "mean_rps": 0.1,
+      "p95_rps": 0.2,
+      "stddev_rps": 0.05,
+      "sample_count": 2016
+    },
+    "saturation": {
+      "cpu_mean_ratio": 0.8,
+      "cpu_p95_ratio": 0.92,
+      "memory_mean_ratio": 0.7,
+      "memory_p95_ratio": 0.85,
+      "available": false
+    }
+  },
+  "provenance": {
+    "prometheus_endpoint": "https://prometheus.example.com",
+    "query_timestamps": {
+      "start": "2026-06-24T00:00:00Z",
+      "end": "2026-07-01T00:00:00Z"
+    },
+    "coverage_ratio": 0.95
+  }
+}

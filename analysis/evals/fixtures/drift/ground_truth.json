@@ -1,0 +1,52 @@
+{
+  "latency_regression": {
+    "class": "latency_regression",
+    "severity_range": ["high", "critical"],
+    "remediation_category": "performance"
+  },
+  "latency_improvement": {
+    "class": "latency_improvement",
+    "severity_range": ["info", "low"],
+    "remediation_category": "monitoring"
+  },
+  "error_rate_elevation": {
+    "class": "error_rate_elevation",
+    "severity_range": ["high", "critical"],
+    "remediation_category": "reliability"
+  },
+  "error_rate_reduction": {
+    "class": "error_rate_reduction",
+    "severity_range": ["info", "low"],
+    "remediation_category": "monitoring"
+  },
+  "throughput_collapse": {
+    "class": "throughput_collapse",
+    "severity_range": ["high", "critical"],
+    "remediation_category": "capacity"
+  },
+  "throughput_surge": {
+    "class": "throughput_surge",
+    "severity_range": ["medium", "high"],
+    "remediation_category": "capacity"
+  },
+  "saturation_approach": {
+    "class": "saturation_approach",
+    "severity_range": ["medium", "high", "critical"],
+    "remediation_category": "capacity"
+  },
+  "availability_drop": {
+    "class": "availability_drop",
+    "severity_range": ["high", "critical"],
+    "remediation_category": "reliability"
+  },
+  "distribution_shift": {
+    "class": "distribution_shift",
+    "severity_range": ["medium", "high"],
+    "remediation_category": "performance"
+  },
+  "no_significant_drift": {
+    "class": "no_significant_drift",
+    "severity_range": ["info"],
+    "remediation_category": "none"
+  }
+}

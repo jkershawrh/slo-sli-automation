@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "service": "checkout-api",
+  "classification": "error_rate_elevation",
+  "severity": "critical",
+  "likely_cause": "The error rate has increased from 0.002 to 0.008, a 300% increase that significantly breaches the upper tolerance band of 0.0032. This indicates a reliability issue, possibly from a failing dependency, misconfiguration, or a bad deployment.",
+  "recommendations": [
+    {
+      "action": "Investigate error logs for the checkout-api service to identify the root cause of the elevated error rate.",
+      "confidence": "high",
+      "rationale": "The error rate of 0.008 is 4x the baseline of 0.002, with a breach magnitude of 5.0. This is the most severe breach observed. Latency (p99 at 510.0 ms vs baseline 500.0 ms) and throughput (5.2 rps vs baseline 5.0 rps) remain stable, suggesting the errors are not caused by overload.",
+      "remediation_plan": {
+        "priority": "immediate",
+        "evidence_basis": "error_rate_ratio live value 0.008 vs baseline 0.002, abs_deviation 0.006, breach magnitude 5.0; breaches upper tolerance band of 0.0032",
+        "expected_impact": "Reducing error rate back within the tolerance band of 0.0008 to 0.0032",
+        "verification_method": "Re-run sloscope drift after implementing fix, verify error_rate_ratio returns within tolerance band and breach_magnitude drops below 1.0"
+      }
+    },
+    {
+      "action": "Check for recent deployments or configuration changes and consider rolling back if a specific change correlates with the error rate increase.",
+      "confidence": "high",
+      "rationale": "The sharp increase from 0.002 to 0.008 in error rate with stable latency and throughput suggests an application-level issue rather than infrastructure degradation."
+    }
+  ]
+}

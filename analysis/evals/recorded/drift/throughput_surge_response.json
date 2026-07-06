@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "service": "checkout-api",
+  "classification": "throughput_surge",
+  "severity": "medium",
+  "likely_cause": "Throughput has increased from 5.0 rps to 9.0 rps, an 80% increase that breaches the upper tolerance band of 7.4 rps. This indicates higher-than-expected traffic, possibly from a marketing event, traffic rerouting, or organic growth.",
+  "recommendations": [
+    {
+      "action": "Review capacity headroom and scaling policies to ensure the service can sustain the elevated throughput without degradation.",
+      "confidence": "high",
+      "rationale": "The throughput of 9.0 rps vs baseline 5.0 rps represents a significant increase with breach magnitude of 1.6667. Currently, latency (p99 510.0 ms vs baseline 500.0 ms) and error rate (0.0022 vs baseline 0.002) remain healthy, but sustained elevated load may erode those margins.",
+      "remediation_plan": {
+        "priority": "short_term",
+        "evidence_basis": "throughput_mean_rps live value 9.0 vs baseline 5.0, abs_deviation 4.0, breach magnitude 1.6667; breaches upper tolerance band of 7.4",
+        "expected_impact": "Ensuring sufficient capacity headroom to sustain elevated throughput without latency or error rate degradation",
+        "verification_method": "Re-run sloscope drift after scaling adjustment, verify latency and error rate indicators remain within tolerance bands under sustained 9.0 rps load"
+      }
+    },
+    {
+      "action": "Update the baseline if the elevated throughput reflects a new normal traffic pattern.",
+      "confidence": "medium",
+      "rationale": "If the increase from 5.0 rps to 9.0 rps is due to organic growth or permanent traffic rerouting, the baseline should be updated to prevent ongoing false drift alerts."
+    }
+  ]
+}

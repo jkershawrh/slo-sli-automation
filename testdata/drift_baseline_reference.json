@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "service": "checkout-api",
+  "namespace": "payments",
+  "lookback_window": "30d",
+  "generated_at": "2026-06-15T12:00:00Z",
+  "indicators": {
+    "latency": {
+      "p50_ms": 180.0,
+      "p90_ms": 350.0,
+      "p95_ms": 420.0,
+      "p99_ms": 500.0,
+      "stddev_ms": 100.0,
+      "sample_count": 100000,
+      "source_query": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{service=\"checkout-api\",namespace=\"payments\"}[5m])) by (le))"
+    },
+    "error_rate": {
+      "ratio": 0.002,
+      "stddev": 0.0005,
+      "error_count": 200,
+      "total_count": 100000,
+      "source_query": "sum(increase(http_requests_errors_total{service=\"checkout-api\",namespace=\"payments\"}[30d])) / sum(increase(http_requests_total{service=\"checkout-api\",namespace=\"payments\"}[30d]))"
+    },
+    "availability": {
+      "ratio": 0.998,
+      "definition": "1 - error_rate"
+    },
+    "throughput": {
+      "mean_rps": 5.0,
+      "p95_rps": 7.2,
+      "stddev_rps": 1.2,
+      "sample_count": 30
+    },
+    "saturation": {
+      "cpu_mean_ratio": 0.4,
+      "cpu_p95_ratio": 0.65,
+      "memory_mean_ratio": 0.6,
+      "memory_p95_ratio": 0.75,
+      "available": true
+    }
+  },
+  "provenance": {
+    "prometheus_endpoint": "https://thanos-querier.openshift-monitoring.svc:9091",
+    "query_timestamps": {
+      "start": "2026-05-16T12:00:00Z",
+      "end": "2026-06-15T12:00:00Z"
+    },
+    "coverage_ratio": 0.98
+  }
+}

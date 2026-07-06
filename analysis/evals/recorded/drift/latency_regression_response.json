@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "service": "checkout-api",
+  "classification": "latency_regression",
+  "severity": "high",
+  "likely_cause": "The p99 latency has increased from 500.0 ms to 750.0 ms, a 50% increase that breaches the upper tolerance band of 690.0 ms. This suggests a degradation in request processing, possibly due to increased backend load, a slow dependency, or a recent code change impacting the critical path.",
+  "recommendations": [
+    {
+      "action": "Investigate recent deployments and changes to the checkout-api service for performance regressions.",
+      "confidence": "high",
+      "rationale": "The p99 latency deviation of 250.0 ms (from baseline 500.0 ms to live 750.0 ms) with a breach magnitude of 1.3158 indicates a significant tail latency regression. Other indicators remain stable, suggesting an isolated latency issue rather than a systemic failure.",
+      "remediation_plan": {
+        "priority": "immediate",
+        "evidence_basis": "latency_p99_ms live value 750.0 vs baseline 500.0, abs_deviation 250.0, breach magnitude 1.3158; breaches upper tolerance band of 690.0",
+        "expected_impact": "Reducing p99 latency back within the tolerance band of 310.0 to 690.0 ms",
+        "verification_method": "Re-run sloscope drift after implementing fix, verify latency_p99_ms returns within tolerance band and breach_magnitude drops below 1.0"
+      }
+    },
+    {
+      "action": "Review downstream dependency response times and connection pool utilization for the checkout-api service.",
+      "confidence": "medium",
+      "rationale": "The p50 latency remains at 125.0 ms (baseline 120.0 ms), well within the tolerance band. The tail-only regression (p99 at 750.0 ms vs baseline 500.0 ms) suggests a subset of requests is affected, possibly by a slow dependency or resource contention."
+    }
+  ]
+}

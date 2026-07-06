@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "service": "checkout-api",
+  "namespace": "ecommerce",
+  "lookback_window": "7d",
+  "generated_at": "2026-07-01T00:00:00Z",
+  "indicators": {
+    "latency": {
+      "p50_ms": 120.0,
+      "p90_ms": 350.0,
+      "p95_ms": 420.0,
+      "p99_ms": 500.0,
+      "stddev_ms": 95.0,
+      "sample_count": 500000,
+      "source_query": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))"
+    },
+    "error_rate": {
+      "ratio": 0.002,
+      "stddev": 0.0006,
+      "error_count": 1000,
+      "total_count": 500000,
+      "source_query": "sum(rate(http_requests_total{code=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))"
+    },
+    "availability": {
+      "ratio": 0.998,
+      "definition": "1 - (error_count / total_count)"
+    },
+    "throughput": {
+      "mean_rps": 5.0,
+      "p95_rps": 8.5,
+      "stddev_rps": 1.2,
+      "sample_count": 2016
+    },
+    "saturation": {
+      "cpu_mean_ratio": 0.4,
+      "cpu_p95_ratio": 0.55,
+      "memory_mean_ratio": 0.6,
+      "memory_p95_ratio": 0.72,
+      "available": true
+    }
+  },
+  "provenance": {
+    "prometheus_endpoint": "https://prometheus.example.com",
+    "query_timestamps": {
+      "start": "2026-06-24T00:00:00Z",
+      "end": "2026-07-01T00:00:00Z"
+    },
+    "coverage_ratio": 0.99
+  }
+}

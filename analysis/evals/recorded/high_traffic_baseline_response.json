@@ -1,0 +1,52 @@
+{
+  "schema_version": 2,
+  "service": "api-gateway",
+  "baseline_schema_version": 1,
+  "maturity_tier": "growing",
+  "slos": [
+    {
+      "sli_name": "request_latency_p99",
+      "sli_type": "latency",
+      "sli_definition": "99th percentile request latency at or below target",
+      "target": 60.5,
+      "target_op": "lte",
+      "target_unit": "ms",
+      "error_budget_percent": 0.1,
+      "burn_rate_policy": {
+        "windows": [
+          {"long_window": "1h", "short_window": "5m", "burn_rate": 14.4, "severity": "critical"},
+          {"long_window": "6h", "short_window": "30m", "burn_rate": 6.0, "severity": "warning"}
+        ]
+      },
+      "headroom": {
+        "observed_value": 50.0,
+        "margin": 10.5,
+        "margin_rationale": "1 stddev (10.5ms) headroom above observed p99"
+      },
+      "rationale": "The observed p99 latency is 50.0ms with a stddev of 10.5ms across 60000000 requests. The tight stddev (21% of p99) and high sample count indicate stable, predictable latency behavior. Setting the target at 60.5ms provides 1 stddev headroom. The p50-to-p99 ratio and high throughput suggest this gateway is well-optimized. Consider tightening to 55ms once stability is confirmed over 90 days.",
+      "requires_review": false
+    },
+    {
+      "sli_name": "service_availability",
+      "sli_type": "availability",
+      "sli_definition": "Ratio of successful requests at or above target",
+      "target": 0.99982,
+      "target_op": "gte",
+      "target_unit": "ratio",
+      "error_budget_percent": 0.018,
+      "burn_rate_policy": {
+        "windows": [
+          {"long_window": "1h", "short_window": "5m", "burn_rate": 14.4, "severity": "critical"},
+          {"long_window": "6h", "short_window": "30m", "burn_rate": 6.0, "severity": "warning"}
+        ]
+      },
+      "headroom": {
+        "observed_value": 0.9999,
+        "margin": 0.00008,
+        "margin_rationale": "2 stddev (0.00004 each) below observed availability"
+      },
+      "rationale": "The observed availability is 0.9999 (99.99%) with error rate stddev of 0.00004. Out of 60000000 requests, only 6000 failed. Setting the target at 0.99982 provides 2 stddev headroom. The extremely low error rate variance suggests highly reliable error handling. This target is achievable and accounts for rare transient failures during deployments.",
+      "requires_review": false
+    }
+  ]
+}

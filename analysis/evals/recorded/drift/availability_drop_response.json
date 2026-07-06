@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "service": "checkout-api",
+  "classification": "availability_drop",
+  "severity": "critical",
+  "likely_cause": "Availability has dropped from 0.998 to 0.96, a deviation of 0.038 that severely breaches the lower tolerance band of 0.9968. This is a significant reliability event with breach magnitude of 31.6667, the most severe observed across all indicators.",
+  "recommendations": [
+    {
+      "action": "Immediately investigate error logs and failing request paths for the checkout-api service.",
+      "confidence": "high",
+      "rationale": "Availability at 0.96 vs baseline 0.998 represents a breach magnitude of 31.6667, the most severe observed. The deviation of 0.038 below baseline means approximately 4% of requests are failing compared to the normal 0.2% error rate.",
+      "remediation_plan": {
+        "priority": "immediate",
+        "evidence_basis": "availability_ratio live value 0.96 vs baseline 0.998, abs_deviation 0.038, breach magnitude 31.6667; breaches lower tolerance band of 0.9968",
+        "expected_impact": "Restoring availability back within the tolerance band of 0.9968 to 0.9992",
+        "verification_method": "Re-run sloscope drift after implementing fix, verify availability_ratio returns within tolerance band and breach_magnitude drops below 1.0"
+      }
+    },
+    {
+      "action": "Check health endpoints and readiness probes for all checkout-api pods to identify unhealthy instances.",
+      "confidence": "high",
+      "rationale": "The severe availability drop from 0.998 to 0.96 with stable latency (p99 510.0 ms vs baseline 500.0 ms) suggests that some pods may be returning errors while others operate normally, pointing to a partial failure."
+    }
+  ]
+}
