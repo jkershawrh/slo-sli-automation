@@ -4,7 +4,7 @@ import { StepCard } from './StepCard'
 import { HeadroomVisual } from './HeadroomVisual'
 import { DriftTimeline } from './DriftTimeline'
 import { MaturityLadder } from './MaturityLadder'
-import { GoldenSignalCard } from './GoldenSignalCard'
+// GoldenSignalCard not used in lab — signals shown in slides
 import { MetricCard } from './MetricCard'
 import { api } from '../api/client'
 import type { Baseline, Proposal, DriftSignal, DriftReport } from '../api/client'
@@ -132,19 +132,7 @@ export function LabWizard({ onExit }: LabWizardProps) {
     return 'var(--text-dim)'
   }
 
-  // Map proposal SLOs to golden signal cards
-  const goldenSignals = proposal ? [
-    { signal: 'Latency', sliType: 'latency', targetOp: 'lte' as const, color: 'var(--rh-blue)', desc: 'Response time must stay at or below threshold', example: '' },
-    { signal: 'Errors', sliType: 'error_rate', targetOp: 'lte' as const, color: 'var(--rh-red)', desc: 'Error rate must stay at or below threshold', example: '' },
-    { signal: 'Traffic', sliType: 'throughput', targetOp: 'gte' as const, color: 'var(--rh-green)', desc: 'Throughput must stay at or above threshold', example: '' },
-    { signal: 'Saturation', sliType: 'saturation', targetOp: 'lte' as const, color: 'var(--rh-orange)', desc: 'Resource usage must stay at or below threshold', example: '' },
-  ].map(gs => {
-    const match = proposal.slos.find(s => s.sli_type === gs.sliType)
-    return {
-      ...gs,
-      example: match ? `${match.sli_name} ${match.target_op === 'lte' ? '<=' : '>='} ${match.target}${match.target_unit}` : 'N/A',
-    }
-  }) : []
+  // Golden signal mapping removed — signals shown in presentation slides
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -419,25 +407,51 @@ export function LabWizard({ onExit }: LabWizardProps) {
                             )}
                           </div>
 
-                          {/* Target value */}
-                          <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 12 }}>
-                            Target: <strong style={{ fontFamily: "'Red Hat Mono', monospace" }}>
-                              {slo.target}{slo.target_unit}
-                            </strong>
-                            {' '}| Error Budget: <strong style={{ fontFamily: "'Red Hat Mono', monospace" }}>
-                              {slo.error_budget_percent}%
-                            </strong>
-                          </div>
+                          {/* 30-day avg → SLO (objective) → SLA (commitment) → Error Budget */}
+                          {slo.headroom && (() => {
+                            const obs = slo.headroom.observed_value;
+                            const fmt = (v: number) => slo.sli_type === 'availability'
+                              ? `${(v * 100).toFixed(2)}%` : `${Math.round(v)} ${slo.target_unit}`;
+                            return (
+                              <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                                <div style={{ padding: '6px 10px', background: 'var(--surface-1)', borderRadius: 6, borderLeft: '3px solid var(--text-dim)' }}>
+                                  <div style={{ fontSize: 9, fontFamily: "'Red Hat Mono', monospace", color: 'var(--text-disabled)', letterSpacing: 1 }}>30-DAY AVG</div>
+                                  <div style={{ fontSize: 16, fontWeight: 800, fontFamily: "'Red Hat Display', sans-serif" }}>{fmt(obs)}</div>
+                                </div>
+                                <div style={{ alignSelf: 'center', color: 'var(--text-disabled)', fontSize: 14 }}>{'→'}</div>
+                                <div style={{ padding: '6px 10px', background: 'var(--surface-1)', borderRadius: 6, borderLeft: '3px solid var(--rh-teal)' }}>
+                                  <div style={{ fontSize: 9, fontFamily: "'Red Hat Mono', monospace", color: 'var(--rh-teal)', letterSpacing: 1 }}>SLO OBJECTIVE</div>
+                                  <div style={{ fontSize: 16, fontWeight: 800, fontFamily: "'Red Hat Display', sans-serif", color: 'var(--rh-teal)' }}>{fmt(slo.slo_target)}</div>
+                                  <div style={{ fontSize: 8, color: 'var(--text-disabled)' }}>where you aim</div>
+                                </div>
+                                <div style={{ alignSelf: 'center', color: 'var(--text-disabled)', fontSize: 14 }}>{'→'}</div>
+                                <div style={{ padding: '6px 10px', background: 'var(--surface-1)', borderRadius: 6, borderLeft: `3px solid ${slo.target_op === 'lte' ? 'var(--rh-blue)' : 'var(--rh-green)'}` }}>
+                                  <div style={{ fontSize: 9, fontFamily: "'Red Hat Mono', monospace", color: slo.target_op === 'lte' ? 'var(--rh-blue)' : 'var(--rh-green)', letterSpacing: 1 }}>
+                                    SLA {slo.target_op === 'lte' ? 'CEILING' : 'FLOOR'}
+                                  </div>
+                                  <div style={{ fontSize: 16, fontWeight: 800, fontFamily: "'Red Hat Display', sans-serif", color: slo.target_op === 'lte' ? 'var(--rh-blue)' : 'var(--rh-green)' }}>
+                                    {fmt(slo.sla_target)}
+                                  </div>
+                                  <div style={{ fontSize: 8, color: 'var(--text-disabled)' }}>what you guarantee</div>
+                                </div>
+                                <div style={{ padding: '6px 10px', background: 'var(--surface-1)', borderRadius: 6, alignSelf: 'center' }}>
+                                  <div style={{ fontSize: 9, fontFamily: "'Red Hat Mono', monospace", color: 'var(--text-disabled)', letterSpacing: 1 }}>ERROR BUDGET</div>
+                                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-secondary)' }}>{slo.error_budget_percent}%</div>
+                                </div>
+                              </div>
+                            );
+                          })()}
 
                           {/* Headroom visual */}
                           {slo.headroom && (
                             <HeadroomVisual
                               observed={slo.headroom.observed_value}
-                              target={slo.target}
+                              target={slo.sla_target}
                               margin={slo.headroom.margin}
                               unit={slo.target_unit}
                               targetOp={slo.target_op}
                               marginRationale={slo.headroom.margin_rationale}
+                              sloTarget={slo.slo_target}
                             />
                           )}
 
@@ -481,21 +495,14 @@ export function LabWizard({ onExit }: LabWizardProps) {
                         </motion.div>
                       ))}
 
-                      {/* Golden Signal Cards */}
-                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-secondary)', marginTop: 20, marginBottom: 12 }}>
-                        Golden Signals Mapping
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                        {goldenSignals.map(gs => (
-                          <GoldenSignalCard
-                            key={gs.signal}
-                            signal={gs.signal}
-                            description={gs.desc}
-                            targetOp={gs.targetOp}
-                            example={gs.example}
-                            color={gs.color}
-                          />
-                        ))}
+                      {/* Lifecycle note */}
+                      <div style={{
+                        marginTop: 12, padding: 10, borderRadius: 6,
+                        background: 'var(--surface-1)', border: '1px solid var(--border)',
+                        fontSize: 12, color: 'var(--text-dim)', textAlign: 'center',
+                        fontFamily: "'Red Hat Mono', monospace",
+                      }}>
+                        Generated from {baseline?.lookback_window || '30d'} baseline. Stays until promoted or demoted.
                       </div>
                     </div>
                   )}

@@ -80,14 +80,15 @@ func TestRenderOpenSLO_HasAlertPolicies(t *testing.T) {
 
 func TestRenderOpenSLO_SanitizesSpecialCharacters(t *testing.T) {
 	proposalJSON := json.RawMessage(`{
-		"schema_version": 1,
+		"schema_version": 3,
 		"service": "My Service! @#$",
 		"baseline_schema_version": 1,
 		"slos": [{
 			"sli_name": "Error Rate (5xx)",
 			"sli_type": "error_rate",
 			"sli_definition": "test",
-			"target": 0.99,
+			"slo_target": 0.99,
+			"sla_target": 0.95,
 			"target_unit": "ratio",
 			"error_budget_percent": 1.0,
 			"burn_rate_policy": {"windows": []},
@@ -148,8 +149,8 @@ func TestRenderOpenSLO_LatencySLO_HasTargetAndValue(t *testing.T) {
 	if !strings.Contains(out, "op: lte") {
 		t.Error("latency SLO output missing 'op: lte'")
 	}
-	if !strings.Contains(out, "value: 595") {
-		t.Error("latency SLO output missing 'value: 595'")
+	if !strings.Contains(out, "value: 452") {
+		t.Error("latency SLO output missing 'value: 452'")
 	}
 }
 

@@ -131,7 +131,8 @@ export interface SLO {
   sli_name: string
   sli_type: 'latency' | 'availability' | 'throughput' | 'saturation' | 'error_rate'
   sli_definition: string
-  target: number
+  slo_target: number
+  sla_target: number
   target_op: 'lte' | 'gte'
   target_unit: string
   error_budget_percent: number

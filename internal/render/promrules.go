@@ -39,7 +39,7 @@ func RenderPrometheusRules(proposalJSON json.RawMessage, service string) (string
 			// Recording rule for latency SLI
 			sb.WriteString(fmt.Sprintf("      - record: slo:%s:latency_ratio\n", name))
 			sb.WriteString("        expr: |\n")
-			sb.WriteString(fmt.Sprintf("          sum(rate(http_request_duration_seconds_bucket{service=\"%s\",le=\"%g\"}[5m]))\n", service, slo.Target/1000))
+			sb.WriteString(fmt.Sprintf("          sum(rate(http_request_duration_seconds_bucket{service=\"%s\",le=\"%g\"}[5m]))\n", service, slo.SLATarget/1000))
 			sb.WriteString("          /\n")
 			sb.WriteString(fmt.Sprintf("          sum(rate(http_request_duration_seconds_count{service=\"%s\"}[5m]))\n", service))
 			sb.WriteString("        labels:\n")
@@ -84,12 +84,12 @@ func RenderPrometheusRules(proposalJSON json.RawMessage, service string) (string
 			case "latency":
 				sb.WriteString("          (\n")
 				sb.WriteString(fmt.Sprintf("            1 - (sum(rate(http_request_duration_seconds_bucket{service=\"%s\",le=\"%g\"}[%s])) / sum(rate(http_request_duration_seconds_count{service=\"%s\"}[%s])))\n",
-					service, slo.Target/1000, w.LongWindow, service, w.LongWindow))
+					service, slo.SLATarget/1000, w.LongWindow, service, w.LongWindow))
 				sb.WriteString(fmt.Sprintf("          ) > %g * %g\n", w.BurnRate, errorBudget))
 				sb.WriteString("          and\n")
 				sb.WriteString("          (\n")
 				sb.WriteString(fmt.Sprintf("            1 - (sum(rate(http_request_duration_seconds_bucket{service=\"%s\",le=\"%g\"}[%s])) / sum(rate(http_request_duration_seconds_count{service=\"%s\"}[%s])))\n",
-					service, slo.Target/1000, w.ShortWindow, service, w.ShortWindow))
+					service, slo.SLATarget/1000, w.ShortWindow, service, w.ShortWindow))
 				sb.WriteString(fmt.Sprintf("          ) > %g * %g\n", w.BurnRate, errorBudget))
 
 			case "availability", "error_rate":
@@ -102,18 +102,18 @@ func RenderPrometheusRules(proposalJSON json.RawMessage, service string) (string
 			case "throughput":
 				// Alert when throughput drops below target * (1 - burn_rate * error_budget)
 				sb.WriteString(fmt.Sprintf("          sum(rate(http_requests_total{service=\"%s\"}[%s])) < %g * (1 - %g * %g)\n",
-					service, w.LongWindow, slo.Target, w.BurnRate, errorBudget))
+					service, w.LongWindow, slo.SLATarget, w.BurnRate, errorBudget))
 				sb.WriteString("          and\n")
 				sb.WriteString(fmt.Sprintf("          sum(rate(http_requests_total{service=\"%s\"}[%s])) < %g * (1 - %g * %g)\n",
-					service, w.ShortWindow, slo.Target, w.BurnRate, errorBudget))
+					service, w.ShortWindow, slo.SLATarget, w.BurnRate, errorBudget))
 
 			case "saturation":
 				// Alert when CPU utilization exceeds target + burn_rate * error_budget
 				sb.WriteString(fmt.Sprintf("          avg(rate(container_cpu_usage_seconds_total{pod=~\"%s.*\"}[%s])) > %g + %g * %g\n",
-					service, w.LongWindow, slo.Target, w.BurnRate, errorBudget))
+					service, w.LongWindow, slo.SLATarget, w.BurnRate, errorBudget))
 				sb.WriteString("          and\n")
 				sb.WriteString(fmt.Sprintf("          avg(rate(container_cpu_usage_seconds_total{pod=~\"%s.*\"}[%s])) > %g + %g * %g\n",
-					service, w.ShortWindow, slo.Target, w.BurnRate, errorBudget))
+					service, w.ShortWindow, slo.SLATarget, w.BurnRate, errorBudget))
 			}
 
 			sb.WriteString("        labels:\n")

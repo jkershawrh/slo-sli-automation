@@ -100,10 +100,10 @@ class TestRubricHardGates:
         proposal = _load_response("web_api_baseline")
         baseline = _load_baseline("web_api_baseline")
         bad_proposal = copy.deepcopy(proposal)
-        # Set latency target below observed p99 (500ms) without review flag
+        # Set sla_target below observed p99 (500ms) — SLA must not be tighter than observed
         for slo in bad_proposal["slos"]:
             if slo["sli_type"] == "latency":
-                slo["target"] = 200.0
+                slo["sla_target"] = 200.0
                 slo["requires_review"] = False
         assert check_consistency(bad_proposal, baseline) is False
 
@@ -122,10 +122,10 @@ class TestRubricHardGates:
         proposal = _load_response("web_api_baseline")
         baseline = _load_baseline("web_api_baseline")
         bad_proposal = copy.deepcopy(proposal)
-        # Observed availability is 0.998; set target higher
+        # Observed availability is 0.998; sla_target higher than observed is tighter (wrong for SLA)
         for slo in bad_proposal["slos"]:
             if slo["sli_type"] == "availability":
-                slo["target"] = 0.9999
+                slo["sla_target"] = 0.9999
                 slo["requires_review"] = False
         assert check_consistency(bad_proposal, baseline) is False
 
@@ -269,7 +269,7 @@ class TestRepairLoop:
         )
 
         result = propose(baseline, client=mock_client, model="test-model")
-        assert result["schema_version"] == 2
+        assert result["schema_version"] == 3
         assert len(result["slos"]) >= 1
         # Should only have been called once
         assert mock_client.chat.completions.create.call_count == 1
@@ -286,7 +286,7 @@ class TestRepairLoop:
         ]
 
         result = propose(baseline, client=mock_client, model="test-model")
-        assert result["schema_version"] == 2
+        assert result["schema_version"] == 3
         assert mock_client.chat.completions.create.call_count == 2
 
     def test_max_retries_exceeded_raises(self):
@@ -317,7 +317,7 @@ class TestRepairLoop:
         ]
 
         result = propose(baseline, client=mock_client, model="test-model")
-        assert result["schema_version"] == 2
+        assert result["schema_version"] == 3
         assert mock_client.chat.completions.create.call_count == 2
 
     def test_consistency_error_retries_then_succeeds(self):
@@ -328,7 +328,7 @@ class TestRepairLoop:
         inconsistent = copy.deepcopy(valid_response)
         for slo in inconsistent["slos"]:
             if slo["sli_type"] == "latency":
-                slo["target"] = 100.0  # tighter than p99 of 500ms
+                slo["sla_target"] = 100.0  # tighter than p99 of 500ms
                 slo["requires_review"] = False
 
         mock_client = MagicMock()
@@ -338,7 +338,7 @@ class TestRepairLoop:
         ]
 
         result = propose(baseline, client=mock_client, model="test-model")
-        assert result["schema_version"] == 2
+        assert result["schema_version"] == 3
         assert mock_client.chat.completions.create.call_count == 2
 
     def test_markdown_fenced_json_is_stripped(self):
@@ -350,7 +350,7 @@ class TestRepairLoop:
         mock_client.chat.completions.create.return_value = _make_mock_response(fenced)
 
         result = propose(baseline, client=mock_client, model="test-model")
-        assert result["schema_version"] == 2
+        assert result["schema_version"] == 3
 
 
 # ---------------------------------------------------------------------------
@@ -367,7 +367,7 @@ class TestConsistencyCheck:
         bad = copy.deepcopy(proposal)
         for slo in bad["slos"]:
             if slo["sli_type"] == "latency":
-                slo["target"] = 200.0  # tighter than 500ms p99
+                slo["sla_target"] = 200.0  # tighter than 500ms p99
                 slo["requires_review"] = False
         errors = propose_check_consistency(bad, baseline)
         assert len(errors) > 0
@@ -379,7 +379,7 @@ class TestConsistencyCheck:
         bad = copy.deepcopy(proposal)
         for slo in bad["slos"]:
             if slo["sli_type"] == "availability":
-                slo["target"] = 0.9999  # higher than observed 0.998
+                slo["sla_target"] = 0.9999  # higher than observed 0.998
                 slo["requires_review"] = False
         errors = propose_check_consistency(bad, baseline)
         assert len(errors) > 0
@@ -484,13 +484,13 @@ class TestNewConsistencyChecks:
         assert any("target_op" in e for e in errors)
 
     def test_excessively_loose_target_fails(self):
-        """A latency target >5 stddev above observed should fail consistency."""
+        """An sla_target >5 stddev above observed should fail consistency."""
         baseline = _load_baseline("web_api_baseline")
         proposal = copy.deepcopy(_load_response("web_api_baseline"))
         for slo in proposal["slos"]:
             if slo["sli_type"] == "latency":
                 # p99=500ms, stddev=95ms; 50000ms is >5 stddev loose
-                slo["target"] = 50000.0
+                slo["sla_target"] = 50000.0
         errors = propose_check_consistency(proposal, baseline)
         assert len(errors) > 0
         assert any("excessively loose" in e for e in errors)
@@ -501,7 +501,8 @@ class TestNewConsistencyChecks:
         proposal = copy.deepcopy(_load_response("web_api_baseline"))
         for slo in proposal["slos"]:
             if slo["sli_type"] == "latency":
-                slo["target"] = 500.0  # exactly equals observed p99
+                slo["slo_target"] = 500.0  # exactly equals observed p99
+                slo["sla_target"] = 500.0  # exactly equals observed p99
         assert check_margin_quality(proposal, baseline) is False
 
     def test_margin_quality_passes_with_headroom(self):

@@ -438,6 +438,12 @@ export default function App() {
               )}
               {baseline && (
                 <div>
+                  <div style={{
+                    fontSize: 11, fontFamily: "'Red Hat Mono', monospace", color: 'var(--text-dim)',
+                    letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 16,
+                  }}>
+                    {baseline.lookback_window} empirical baseline
+                  </div>
                   {/* Latency indicators */}
                   <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--rh-blue)', marginBottom: 8 }}>Latency</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6, marginBottom: 16 }}>
@@ -535,25 +541,58 @@ export default function App() {
                         )}
                       </div>
 
-                      {/* Target value */}
-                      <div style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 12 }}>
-                        Target: <strong style={{ fontFamily: 'Red Hat Mono, monospace' }}>
-                          {slo.target}{slo.target_unit}
-                        </strong>
-                        {' '}| Error Budget: <strong style={{ fontFamily: 'Red Hat Mono, monospace' }}>
-                          {slo.error_budget_percent}%
-                        </strong>
-                      </div>
+                      {/* 30-day avg → SLO (objective) → SLA (commitment) → Error Budget */}
+                      {slo.headroom && (() => {
+                        const obs = slo.headroom.observed_value;
+                        const fmtVal = (v: number) => slo.sli_type === 'availability'
+                          ? `${(v * 100).toFixed(2)}%`
+                          : `${Math.round(v)} ${slo.target_unit}`;
+                        return (
+                          <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
+                            <div style={{ padding: '8px 14px', background: 'var(--surface-1)', borderRadius: 6, borderLeft: '3px solid var(--text-dim)' }}>
+                              <div style={{ fontSize: 10, fontFamily: "'Red Hat Mono', monospace", color: 'var(--text-disabled)', letterSpacing: 1 }}>30-DAY AVG</div>
+                              <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "'Red Hat Display', sans-serif", color: 'var(--text-primary)' }}>
+                                {fmtVal(obs)}
+                              </div>
+                            </div>
+                            <div style={{ alignSelf: 'center', color: 'var(--text-disabled)', fontSize: 16 }}>{'→'}</div>
+                            <div style={{ padding: '8px 14px', background: 'var(--surface-1)', borderRadius: 6, borderLeft: '3px solid var(--rh-teal)' }}>
+                              <div style={{ fontSize: 10, fontFamily: "'Red Hat Mono', monospace", color: 'var(--rh-teal)', letterSpacing: 1 }}>SLO OBJECTIVE</div>
+                              <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "'Red Hat Display', sans-serif", color: 'var(--rh-teal)' }}>
+                                {fmtVal(slo.slo_target)}
+                              </div>
+                              <div style={{ fontSize: 9, color: 'var(--text-disabled)' }}>where you aim</div>
+                            </div>
+                            <div style={{ alignSelf: 'center', color: 'var(--text-disabled)', fontSize: 16 }}>{'→'}</div>
+                            <div style={{ padding: '8px 14px', background: 'var(--surface-1)', borderRadius: 6, borderLeft: `3px solid ${slo.target_op === 'lte' ? 'var(--rh-blue)' : 'var(--rh-green)'}` }}>
+                              <div style={{ fontSize: 10, fontFamily: "'Red Hat Mono', monospace", color: slo.target_op === 'lte' ? 'var(--rh-blue)' : 'var(--rh-green)', letterSpacing: 1 }}>
+                                SLA {slo.target_op === 'lte' ? 'CEILING' : 'FLOOR'}
+                              </div>
+                              <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "'Red Hat Display', sans-serif", color: slo.target_op === 'lte' ? 'var(--rh-blue)' : 'var(--rh-green)' }}>
+                                {fmtVal(slo.sla_target)}
+                              </div>
+                              <div style={{ fontSize: 9, color: 'var(--text-disabled)' }}>what you guarantee</div>
+                            </div>
+                            <div style={{ padding: '8px 14px', background: 'var(--surface-1)', borderRadius: 6, alignSelf: 'center' }}>
+                              <div style={{ fontSize: 10, fontFamily: "'Red Hat Mono', monospace", color: 'var(--text-disabled)', letterSpacing: 1 }}>ERROR BUDGET</div>
+                              <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'Red Hat Display', sans-serif", color: 'var(--text-secondary)' }}>
+                                {slo.error_budget_percent}%
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       {/* Headroom visual */}
                       {slo.headroom && (
                         <HeadroomVisual
                           observed={slo.headroom.observed_value}
-                          target={slo.target}
+                          target={slo.sla_target}
                           margin={slo.headroom.margin}
                           unit={slo.target_unit}
                           targetOp={slo.target_op}
                           marginRationale={slo.headroom.margin_rationale}
+                          sloTarget={slo.slo_target}
                         />
                       )}
 
@@ -594,6 +633,14 @@ export default function App() {
                       </div>
                     </motion.div>
                   ))}
+                  <div style={{
+                    marginTop: 12, padding: 10, borderRadius: 6,
+                    background: 'var(--surface-1)', border: '1px solid var(--border)',
+                    fontSize: 12, color: 'var(--text-dim)', textAlign: 'center',
+                    fontFamily: "'Red Hat Mono', monospace",
+                  }}>
+                    Generated from {baseline?.lookback_window || '30d'} baseline. Stays until promoted or demoted.
+                  </div>
                 </div>
               )}
             </StepCard>

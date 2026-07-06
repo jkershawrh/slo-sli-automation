@@ -152,7 +152,7 @@ class TestProposalSchema:
     """Tests for proposal.schema.json."""
 
     VALID_PROPOSAL = {
-        "schema_version": 2,
+        "schema_version": 3,
         "service": "checkout-api",
         "baseline_schema_version": 1,
         "maturity_tier": "growing",
@@ -161,7 +161,8 @@ class TestProposalSchema:
                 "sli_name": "request_latency_p99",
                 "sli_type": "latency",
                 "sli_definition": "99th percentile latency of HTTP requests to checkout-api",
-                "target": 2500.0,
+                "slo_target": 1900.0,
+                "sla_target": 2500.0,
                 "target_op": "lte",
                 "target_unit": "ms",
                 "error_budget_percent": 0.1,
@@ -187,7 +188,8 @@ class TestProposalSchema:
                 "sli_name": "availability",
                 "sli_type": "availability",
                 "sli_definition": "Ratio of non-5xx responses to total requests",
-                "target": 0.997,
+                "slo_target": 0.999,
+                "sla_target": 0.996,
                 "target_op": "gte",
                 "error_budget_percent": 0.3,
                 "burn_rate_policy": {

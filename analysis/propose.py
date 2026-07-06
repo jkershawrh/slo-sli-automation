@@ -29,19 +29,24 @@ Each SLI type has a "direction of goodness" that determines the comparison opera
 
 You MUST set target_op correctly for each SLO. This field is required.
 
-TARGET-SETTING RULES (incremental, achievable targets with headroom):
-NEVER set a target exactly equal to the observed value. Always include margin.
+TARGET-SETTING RULES:
+You must produce BOTH an SLO target (objective) and an SLA target (agreement) for each indicator.
 
-For "lower is better" metrics (latency, error_rate, saturation) where target_op = "lte":
-  Target should be ABOVE the observed value to provide headroom.
-  - Good performance (low stddev relative to mean): target = observed + (1 to 2) * stddev
-  - Poor performance (high stddev or concerning values): target = observed + 0.5 * stddev, set requires_review = true
+SLO TARGET (objective — where you aim, drives improvement):
+  For "lower is better" (lte): slo_target = observed - (0.5 to 1) * stddev. Aim LOWER than current.
+  For "higher is better" (gte): slo_target = observed + (0.5 to 1) * stddev. Aim HIGHER than current.
+  The SLO is aspirational but reachable. It represents the next improvement goal.
 
-For "higher is better" metrics (availability, throughput) where target_op = "gte":
-  Target should be BELOW the observed value to provide headroom.
-  - Good performance: target = observed - (1 to 2) * stddev
-  - Poor performance: target at a modest incremental improvement, set requires_review = true
+SLA TARGET (agreement — what you guarantee, the alerting boundary):
+  For "lower is better" (lte): sla_target = observed + (1 to 2) * stddev. Set ABOVE observed with headroom.
+  For "higher is better" (gte): sla_target = observed - (1 to 2) * stddev. Set BELOW observed with headroom.
+  The SLA has margin so normal variance does not breach the commitment.
 
+The SLO must be "tighter" (more ambitious) than observed.
+The SLA must be "looser" (more permissive) than observed.
+The SLO must be between the observed value and the SLA in terms of ambition.
+
+NEVER set slo_target or sla_target exactly equal to the observed value. Always include margin.
 NEVER propose aspirational jumps (e.g., 93% availability to 99.9%). Propose incremental improvements.
 
 Use the headroom object to document: the observed_value, the margin added, and why that margin was chosen.
@@ -82,7 +87,7 @@ RESPONSE FORMAT:
 Respond ONLY with valid JSON. No markdown, no explanation outside the JSON.
 
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "service": "<from baseline>",
   "baseline_schema_version": <from baseline schema_version>,
   "maturity_tier": "<new|growing|mature from context>",
@@ -91,7 +96,8 @@ Respond ONLY with valid JSON. No markdown, no explanation outside the JSON.
       "sli_name": "string",
       "sli_type": "latency|availability|throughput|saturation|error_rate",
       "sli_definition": "description of the SLI",
-      "target": number,
+      "slo_target": number,
+      "sla_target": number,
       "target_op": "lte or gte",
       "target_unit": "ms, ratio, percent, rps",
       "error_budget_percent": number (0-100),

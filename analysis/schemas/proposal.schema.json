@@ -6,7 +6,7 @@
   "type": "object",
   "required": ["schema_version", "service", "baseline_schema_version", "slos"],
   "properties": {
-    "schema_version": { "type": "integer", "const": 2 },
+    "schema_version": { "type": "integer", "const": 3 },
     "service": { "type": "string", "minLength": 1 },
     "baseline_schema_version": { "type": "integer" },
     "maturity_tier": {
@@ -19,12 +19,13 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["sli_name", "sli_type", "sli_definition", "target", "target_op", "error_budget_percent", "burn_rate_policy", "rationale"],
+        "required": ["sli_name", "sli_type", "sli_definition", "slo_target", "sla_target", "target_op", "error_budget_percent", "burn_rate_policy", "rationale"],
         "properties": {
           "sli_name": { "type": "string" },
           "sli_type": { "type": "string", "enum": ["latency", "availability", "throughput", "saturation", "error_rate"] },
           "sli_definition": { "type": "string" },
-          "target": { "type": "number" },
+          "slo_target": { "type": "number" },
+          "sla_target": { "type": "number" },
           "target_op": {
             "type": "string",
             "enum": ["lte", "gte"],
