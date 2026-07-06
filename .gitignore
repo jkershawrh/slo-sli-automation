@@ -5,6 +5,10 @@ bin/
 # Go
 go.sum
 
+# Node
+node_modules/
+frontend/dist/
+
 # Python
 __pycache__/
 *.pyc
