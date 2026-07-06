@@ -42,6 +42,18 @@ check "Proposal eval tests" python3 -m pytest analysis/tests/test_proposal.py -q
 
 echo ""
 
+# 2b. Backend API tests
+echo "--- Backend API tests ---"
+check "Backend API test suite" python3 -m pytest backend/test_server.py -q
+
+echo ""
+
+# 2c. Frontend tests
+echo "--- Frontend tests ---"
+check "Frontend component smoke tests" bash -c "cd frontend && npx vitest run 2>&1 | grep -q 'Tests.*passed'"
+
+echo ""
+
 # 3. LLM eval grid (against recorded responses)
 echo "--- Eval grid ---"
 check "LLM proposal eval grid" python3 -c "
@@ -207,6 +219,8 @@ echo "| Artifact schemas + Go/Python boundary | $([ $FAIL -eq 0 ] && echo GREEN 
 echo "| LLM proposal stage (eval grid)     | $([ $FAIL -eq 0 ] && echo GREEN || echo RED)   |"
 echo "| Renderers (OpenSLO + Prom rules)   | $([ $FAIL -eq 0 ] && echo GREEN || echo RED)   |"
 echo "| Audit bundle                       | $([ $FAIL -eq 0 ] && echo GREEN || echo RED)   |"
+echo "| Backend API                        | $([ $FAIL -eq 0 ] && echo GREEN || echo RED)   |"
+echo "| Frontend components                | $([ $FAIL -eq 0 ] && echo GREEN || echo RED)   |"
 echo "| End to end                         | $([ $FAIL -eq 0 ] && echo GREEN || echo RED)   |"
 if [ -d internal/drift ]; then
 echo "| Drift deviation + classification   | $([ $FAIL -eq 0 ] && echo GREEN || echo RED)   |"
