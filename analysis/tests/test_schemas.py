@@ -43,7 +43,7 @@ class TestEvidenceSchema:
 
     def test_invalid_schema_version(self):
         data = _load_fixture("evidence_checkout_api.json")
-        data["schema_version"] = 2
+        data["schema_version"] = 99
         assert not is_valid(data, "evidence")
 
     def test_invalid_coverage_ratio_above_one(self):
@@ -60,6 +60,91 @@ class TestEvidenceSchema:
         data = _load_fixture("evidence_checkout_api.json")
         data["extra_field"] = "should fail"
         assert not is_valid(data, "evidence")
+
+
+# ---------------------------------------------------------------------------
+# Evidence schema v2 (multi-signal) tests
+# ---------------------------------------------------------------------------
+
+class TestEvidenceSchemaV2:
+    """Tests for evidence.schema.json v2 with traces + logs."""
+
+    def test_evidence_v2_with_traces_and_logs_validates(self):
+        data = _load_fixture("evidence_checkout_api.json")
+        data["schema_version"] = 2
+        data["series"]["traces"] = {
+            "available": True,
+            "source": "tempo",
+            "total_spans": 50000,
+            "service_spans": 12000,
+            "span_latency_p99_ms": 450.0,
+            "span_latency_p50_ms": 25.0,
+            "top_dependencies": [
+                {
+                    "service": "inventory-api",
+                    "p99_ms": 120.0,
+                    "call_count": 8000,
+                    "error_rate": 0.002
+                },
+                {
+                    "service": "payment-gateway",
+                    "p99_ms": 300.0,
+                    "call_count": 4000,
+                    "error_rate": 0.005
+                }
+            ],
+            "slow_span_pattern": "payment-gateway -> stripe-api"
+        }
+        data["series"]["logs"] = {
+            "available": True,
+            "source": "loki",
+            "total_entries": 200000,
+            "error_entries": 460,
+            "error_breakdown": [
+                {"category": "timeout", "count": 200, "ratio": 0.435},
+                {"category": "connection_refused", "count": 150, "ratio": 0.326},
+                {"category": "internal_error", "count": 110, "ratio": 0.239}
+            ],
+            "error_rate_by_category": {
+                "timeout": 0.001,
+                "connection_refused": 0.00075,
+                "internal_error": 0.00055
+            }
+        }
+        validate(data, "evidence")
+
+    def test_evidence_v1_still_validates(self):
+        data = _load_fixture("evidence_checkout_api.json")
+        assert data["schema_version"] == 1
+        validate(data, "evidence")
+
+    def test_evidence_v2_without_traces_validates(self):
+        data = _load_fixture("evidence_checkout_api.json")
+        data["schema_version"] = 2
+        # No traces or logs added - should still validate
+        validate(data, "evidence")
+
+    def test_baseline_with_trace_latency_validates(self):
+        data = copy.deepcopy(TestBaselineSchema.VALID_BASELINE)
+        data["indicators"]["trace_latency"] = {
+            "service_p99_ms": 450.0,
+            "top_dependency": "inventory-api",
+            "top_dependency_p99_ms": 120.0,
+            "top_dependency_contribution": 0.27,
+            "available": True
+        }
+        data["indicators"]["error_breakdown"] = {
+            "top_category": "timeout",
+            "top_category_ratio": 0.435,
+            "categories": 3,
+            "available": True
+        }
+        validate(data, "baseline")
+
+    def test_baseline_without_trace_latency_validates(self):
+        data = copy.deepcopy(TestBaselineSchema.VALID_BASELINE)
+        # No trace_latency or error_breakdown - should still validate
+        validate(data, "baseline")
 
 
 # ---------------------------------------------------------------------------

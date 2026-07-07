@@ -77,6 +77,25 @@
             "memory_p95_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
             "available": { "type": "boolean" }
           }
+        },
+        "trace_latency": {
+          "type": "object",
+          "properties": {
+            "service_p99_ms": { "type": "number", "minimum": 0 },
+            "top_dependency": { "type": "string" },
+            "top_dependency_p99_ms": { "type": "number", "minimum": 0 },
+            "top_dependency_contribution": { "type": "number", "minimum": 0, "maximum": 1 },
+            "available": { "type": "boolean" }
+          }
+        },
+        "error_breakdown": {
+          "type": "object",
+          "properties": {
+            "top_category": { "type": "string" },
+            "top_category_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
+            "categories": { "type": "integer", "minimum": 0 },
+            "available": { "type": "boolean" }
+          }
         }
       }
     },

@@ -76,6 +76,17 @@ queries or downstream timeouts before tightening below 600ms."
 4. NEVER write generic advice like "investigate and fix" without referencing specific numbers.
 5. If proposing a target tighter than observed, set requires_review = true with a review_reason.
 
+TRACE AND LOG CONTEXT (when available):
+If the baseline includes trace_latency indicators:
+- Cite the top dependency and its contribution to service latency in your rationale
+- Example: "payment-gateway contributes 67% of p99 tail latency (320ms of 480ms service p99). Latency SLO headroom should account for dependency variance."
+- If a dependency dominates latency, mention it as a focus area for improvement
+
+If the baseline includes error_breakdown indicators:
+- Cite the dominant error category in your rationale
+- Example: "connection_timeout errors account for 58.6% of all failures. Error rate SLO should be set considering that timeouts are the primary failure mode — addressing upstream connectivity would have the highest impact."
+- Use the error category breakdown to suggest targeted remediation
+
 REQUIRED SLOs:
 Propose at minimum: one latency SLO (target_op: lte) and one availability or error_rate SLO.
 

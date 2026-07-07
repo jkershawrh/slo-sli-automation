@@ -26,6 +26,7 @@ from pathlib import Path
 
 import pytest
 
+from baseline import compute_baseline
 from deviation import (
     BAND_MULTIPLIER,
     EPSILON,
@@ -635,3 +636,58 @@ class TestSkippedIndicator:
         ]
         assert len(sat_inds) == 0
         validate(signal, "drift-signal")
+
+
+# ---------------------------------------------------------------------------
+# TDD tests for trace and log drift indicators
+# ---------------------------------------------------------------------------
+
+
+class TestTraceLogDeviation:
+    """TDD tests for trace and log drift indicators."""
+
+    def test_dependency_latency_regression_detected(self):
+        """When a dependency p99 doubles, deviation should detect it."""
+        baseline = self._load_full_baseline()
+        live_evidence = self._load_fixture("drift_dependency_regression.json")
+        signal = compute_drift_signal({"live_evidence": live_evidence, "baseline": baseline})
+
+        # Find the trace indicator
+        trace_ind = [i for i in signal["indicators"] if i["name"] == "dependency_p99_ms"]
+        assert len(trace_ind) == 1
+        assert trace_ind[0]["band_breach"] is True
+        assert trace_ind[0]["first_pass_class"] == "dependency_latency_regression"
+
+    def test_error_category_shift_detected(self):
+        """When dominant error category ratio shifts significantly."""
+        baseline = self._load_full_baseline()
+        live_evidence = self._load_fixture("drift_error_category_shift.json")
+        signal = compute_drift_signal({"live_evidence": live_evidence, "baseline": baseline})
+
+        log_ind = [i for i in signal["indicators"] if i["name"] == "error_top_category_ratio"]
+        assert len(log_ind) == 1
+        assert log_ind[0]["band_breach"] is True
+        assert log_ind[0]["first_pass_class"] == "error_category_shift"
+
+    def test_no_trace_indicators_when_traces_unavailable(self):
+        """Metrics-only evidence should produce no trace indicators."""
+        # Use the original baseline without traces
+        baseline_ref = json.load(open(TESTDATA_DIR / "drift_baseline_reference.json"))
+        live = json.load(open(TESTDATA_DIR / "drift_live_no_drift.json"))
+        signal = compute_drift_signal({"live_evidence": live, "baseline": baseline_ref})
+        trace_inds = [i for i in signal["indicators"] if "dependency" in i["name"]]
+        assert len(trace_inds) == 0
+
+    def test_output_validates_with_new_classes(self):
+        baseline = self._load_full_baseline()
+        live = self._load_fixture("drift_dependency_regression.json")
+        signal = compute_drift_signal({"live_evidence": live, "baseline": baseline})
+        validate(signal, "drift-signal")
+
+    def _load_full_baseline(self):
+        with open(TESTDATA_DIR / "evidence_checkout_api_full.json") as f:
+            return compute_baseline(json.load(f))
+
+    def _load_fixture(self, name):
+        with open(TESTDATA_DIR / name) as f:
+            return json.load(f)

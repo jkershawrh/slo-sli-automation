@@ -45,6 +45,8 @@ type EvidenceSeries struct {
 	RequestTotal     CounterData     `json:"request_total"`
 	ErrorTotal       CounterData     `json:"error_total"`
 	Saturation       *SaturationData `json:"saturation,omitempty"`
+	Traces           *TraceData      `json:"traces,omitempty"`
+	Logs             *LogData        `json:"logs,omitempty"`
 }
 
 // HistogramData holds the bucket distribution for a histogram metric.
@@ -98,4 +100,41 @@ type EvidenceProvenance struct {
 type TimeRange struct {
 	Start string `json:"start"`
 	End   string `json:"end"`
+}
+
+// TraceData holds distributed tracing evidence for a service.
+type TraceData struct {
+	Available        bool             `json:"available"`
+	Source           string           `json:"source"`
+	TotalSpans       int              `json:"total_spans"`
+	ServiceSpans     int              `json:"service_spans"`
+	SpanLatencyP99Ms float64          `json:"span_latency_p99_ms"`
+	SpanLatencyP50Ms float64          `json:"span_latency_p50_ms"`
+	TopDependencies  []DependencySpan `json:"top_dependencies,omitempty"`
+	SlowSpanPattern  string           `json:"slow_span_pattern,omitempty"`
+}
+
+// DependencySpan records latency and error data for a downstream dependency.
+type DependencySpan struct {
+	Service   string  `json:"service"`
+	P99Ms     float64 `json:"p99_ms"`
+	CallCount int     `json:"call_count"`
+	ErrorRate float64 `json:"error_rate"`
+}
+
+// LogData holds log-based evidence for a service.
+type LogData struct {
+	Available           bool               `json:"available"`
+	Source              string             `json:"source"`
+	TotalEntries        int                `json:"total_entries"`
+	ErrorEntries        int                `json:"error_entries"`
+	ErrorBreakdown      []ErrorCategory    `json:"error_breakdown,omitempty"`
+	ErrorRateByCategory map[string]float64 `json:"error_rate_by_category,omitempty"`
+}
+
+// ErrorCategory records the count and ratio for a single error category.
+type ErrorCategory struct {
+	Category string  `json:"category"`
+	Count    int     `json:"count"`
+	Ratio    float64 `json:"ratio"`
 }
