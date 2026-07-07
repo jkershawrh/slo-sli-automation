@@ -196,7 +196,7 @@ def classify_drift(req: DriftClassifyRequest):
     if not llm_base or not llm_key:
         # Fall back to recorded response based on dominant signal class
         from classify import normalized_report_class
-        dominant_class = normalized_report_class(req.drift_signal)
+        dominant_class = normalized_report_class(req.drift_signal) or "no_significant_drift"
         recorded_path = DRIFT_RECORDED_DIR / f"{dominant_class}_response.json"
         if recorded_path.exists():
             return load_fixture(recorded_path)
