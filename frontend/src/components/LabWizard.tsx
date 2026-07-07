@@ -140,8 +140,6 @@ export function LabWizard({ onExit }: LabWizardProps) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 32px', borderBottom: '1px solid var(--border)', background: 'var(--surface-1)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <img src="/logos/redhat.svg" alt="Red Hat" style={{ height: 20 }} />
-          <span style={{ color: 'var(--text-disabled)', fontSize: 22, fontWeight: 300 }}>&times;</span>
-          <img src="/logos/intel.png" alt="Intel" style={{ height: 20 }} />
         </div>
         <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'Red Hat Display, sans-serif' }}>
           SLO Lab
