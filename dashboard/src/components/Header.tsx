@@ -19,8 +19,6 @@ export function Header() {
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <img src="/logos/redhat.svg" alt="Red Hat" style={{ height: 20 }} />
-        <span style={{ color: 'var(--text-disabled)', fontSize: 22, fontWeight: 300 }}>&times;</span>
-        <img src="/logos/intel.png" alt="Intel" style={{ height: 20 }} />
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ fontFamily: "'Red Hat Display', sans-serif", fontSize: 16, fontWeight: 700 }}>

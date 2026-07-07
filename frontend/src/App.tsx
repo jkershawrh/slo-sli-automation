@@ -140,8 +140,6 @@ export default function App() {
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6 }}
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
           <img src="/logos/redhat.svg" alt="Red Hat" style={{ height: 28 }} />
-          <span style={{ color: 'var(--text-disabled)', fontSize: 28, fontWeight: 300 }}>&times;</span>
-          <img src="/logos/intel.png" alt="Intel" style={{ height: 28 }} />
         </motion.div>
         <motion.h1 initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.7 }}
           style={{ fontSize: 56, fontWeight: 800, fontFamily: 'Red Hat Display, sans-serif', lineHeight: 1.1, margin: '24px 0 0' }}>
