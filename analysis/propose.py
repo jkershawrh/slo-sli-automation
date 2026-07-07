@@ -46,6 +46,17 @@ The SLO must be "tighter" (more ambitious) than observed.
 The SLA must be "looser" (more permissive) than observed.
 The SLO must be between the observed value and the SLA in terms of ambition.
 
+WHEN STDDEV IS ZERO OR MISSING:
+If stddev is 0 or not available, use percentage-based margins instead:
+  For "lower is better" (lte): slo_target = observed * 0.85, sla_target = observed * 1.5
+  For "higher is better" (gte): slo_target = observed * 1.15, sla_target = observed * 0.7
+  Example: CPU at 0.20 with no stddev → SLO = 0.17 (aim lower), SLA ceiling = 0.30 (headroom above)
+
+CRITICAL DIRECTION RULE FOR SATURATION (lte):
+  saturation slo_target must be LOWER than observed (aim for less utilization)
+  saturation sla_target must be HIGHER than observed (ceiling — guarantee you stay below this)
+  Example: CPU observed = 0.20 → slo_target = 0.17, sla_target = 0.30
+
 NEVER set slo_target or sla_target exactly equal to the observed value. Always include margin.
 NEVER propose aspirational jumps (e.g., 93% availability to 99.9%). Propose incremental improvements.
 
@@ -88,7 +99,10 @@ If the baseline includes error_breakdown indicators:
 - Use the error category breakdown to suggest targeted remediation
 
 REQUIRED SLOs:
-Propose at minimum: one latency SLO (target_op: lte) and one availability or error_rate SLO.
+Propose SLOs only for indicators that have non-zero observed data in the baseline.
+If latency, error_rate, or throughput are all zero (no HTTP metrics), focus on saturation SLOs instead.
+If availability is exactly 1.0 (100%), set slo_target to 0.999 and sla_target to 0.995 as practical defaults.
+Do not propose SLOs for indicators where you have no data to ground them.
 
 BURN RATE POLICY:
 Each SLO must include a burn_rate_policy with at least 2 multi-window burn-rate alert windows \
