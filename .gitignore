@@ -36,6 +36,11 @@ build/
 # Output artifacts
 out/
 
+# Stale pipeline artifacts in root
+/deviation-input.json
+/drift-signal.json
+/live-evidence.json
+
 # OS
 .DS_Store
 Thumbs.db

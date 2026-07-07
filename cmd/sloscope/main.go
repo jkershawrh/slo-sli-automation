@@ -11,9 +11,11 @@ import (
 
 	"github.com/sloscope/sloscope/internal/config"
 	"github.com/sloscope/sloscope/internal/drift"
+	"github.com/sloscope/sloscope/internal/logs"
 	"github.com/sloscope/sloscope/internal/pipeline"
 	"github.com/sloscope/sloscope/internal/prom"
 	"github.com/sloscope/sloscope/internal/render"
+	"github.com/sloscope/sloscope/internal/traces"
 )
 
 func main() {
@@ -173,6 +175,40 @@ func runGenerate(args []string) error {
 		bundle, err := client.CollectEvidence(ctx, *service, ns, lb)
 		if err != nil {
 			return fmt.Errorf("collecting evidence: %w", err)
+		}
+
+		// Enrich evidence with traces if TEMPO_URL is configured.
+		if cfg.TempoURL != "" {
+			fmt.Printf("Collecting trace evidence from %s...\n", cfg.TempoURL)
+			traceClient := traces.NewClient(traces.ClientConfig{
+				BaseURL: cfg.TempoURL,
+				Token:   cfg.TempoToken,
+			})
+			traceData, err := traceClient.CollectTraceEvidence(ctx, *service, lb)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "warning: trace collection failed: %v\n", err)
+			} else {
+				bundle.Series.Traces = traceData
+				bundle.SchemaVersion = 2
+				fmt.Println("Trace evidence collected")
+			}
+		}
+
+		// Enrich evidence with logs if LOKI_URL is configured.
+		if cfg.LokiURL != "" {
+			fmt.Printf("Collecting log evidence from %s...\n", cfg.LokiURL)
+			logClient := logs.NewClient(logs.ClientConfig{
+				BaseURL: cfg.LokiURL,
+				Token:   cfg.LokiToken,
+			})
+			logData, err := logClient.CollectLogEvidence(ctx, *service, ns, lb)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "warning: log collection failed: %v\n", err)
+			} else {
+				bundle.Series.Logs = logData
+				bundle.SchemaVersion = 2
+				fmt.Println("Log evidence collected")
+			}
 		}
 
 		evidence, err = json.MarshalIndent(bundle, "", "  ")
@@ -384,9 +420,48 @@ func runDrift(args []string) error {
 		fmt.Printf("Collecting live evidence from %s for %s/%s (window: %s)...\n",
 			cfg.PromURL, *namespace, *service, *window)
 
-		liveEvidence, err = drift.CollectLiveEvidence(ctx, client, *service, *namespace, windowDur)
+		bundle, err := client.CollectEvidence(ctx, *service, *namespace, windowDur)
 		if err != nil {
-			return err
+			return fmt.Errorf("collecting live evidence: %w", err)
+		}
+
+		// Enrich evidence with traces if TEMPO_URL is configured.
+		if cfg.TempoURL != "" {
+			fmt.Printf("Collecting trace evidence from %s...\n", cfg.TempoURL)
+			traceClient := traces.NewClient(traces.ClientConfig{
+				BaseURL: cfg.TempoURL,
+				Token:   cfg.TempoToken,
+			})
+			traceData, err := traceClient.CollectTraceEvidence(ctx, *service, windowDur)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "warning: trace collection failed: %v\n", err)
+			} else {
+				bundle.Series.Traces = traceData
+				bundle.SchemaVersion = 2
+				fmt.Println("Trace evidence collected")
+			}
+		}
+
+		// Enrich evidence with logs if LOKI_URL is configured.
+		if cfg.LokiURL != "" {
+			fmt.Printf("Collecting log evidence from %s...\n", cfg.LokiURL)
+			logClient := logs.NewClient(logs.ClientConfig{
+				BaseURL: cfg.LokiURL,
+				Token:   cfg.LokiToken,
+			})
+			logData, err := logClient.CollectLogEvidence(ctx, *service, *namespace, windowDur)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "warning: log collection failed: %v\n", err)
+			} else {
+				bundle.Series.Logs = logData
+				bundle.SchemaVersion = 2
+				fmt.Println("Log evidence collected")
+			}
+		}
+
+		liveEvidence, err = json.MarshalIndent(bundle, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshaling live evidence: %w", err)
 		}
 		fmt.Println("Live evidence collected successfully.")
 

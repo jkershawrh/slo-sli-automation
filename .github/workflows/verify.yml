@@ -1,0 +1,53 @@
+name: Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Python deps
+        run: pip install -r requirements.txt -r backend/requirements.txt
+
+      - name: Install frontend deps
+        run: cd frontend && npm ci
+
+      - name: Build Go binary
+        run: make build
+
+      - name: Run Go tests
+        run: go test ./... -count=1
+
+      - name: Run Python tests
+        run: python -m pytest analysis/tests/ backend/test_server.py -q
+
+      - name: Run frontend tests
+        run: cd frontend && npx vitest run
+
+      - name: Build frontend
+        run: cd frontend && npm run build
+
+      - name: Run verification
+        run: bash scripts/verify.sh

@@ -221,7 +221,7 @@ def render_openslo(proposal):
         lines.append("  budgetingMethod: Occurrences")
         lines.append("  objectives:")
         lines.append(f"    - displayName: {slo.get('sli_name', '')}")
-        lines.append(f"      target: {slo.get('target', 0)}")
+        lines.append(f"      target: {slo.get('slo_target', slo.get('target', 0))}")
         lines.append(f"      op: {target_op}")
 
     return "\n".join(lines)
@@ -244,7 +244,7 @@ def render_prom_rules(proposal, service):
             lines.append("          /")
             lines.append(f'          sum(rate(http_requests_total{{service="{service}"}}[5m]))')
         elif sli_type == "latency":
-            target_sec = slo.get("target", 0) / 1000
+            target_sec = slo.get("sla_target", slo.get("target", 0)) / 1000
             lines.append(f"      - record: slo:{name}:latency_ratio")
             lines.append("        expr: |")
             lines.append(f'          sum(rate(http_request_duration_seconds_bucket{{service="{service}",le="{target_sec}"}}[5m]))')
