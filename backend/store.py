@@ -56,9 +56,11 @@ class ArtifactStore:
         """List all services that have artifacts."""
         if not self.root.exists():
             return []
+        skip = {"lost+found", "history", ".snapshot"}
         return sorted([
             d.name for d in self.root.iterdir()
-            if d.is_dir() and not d.name.startswith(".")
+            if d.is_dir() and not d.name.startswith(".") and d.name not in skip
+            and any(d.glob("*.json"))
         ])
 
     def get_service_status(self, service):
