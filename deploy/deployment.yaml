@@ -61,9 +61,14 @@ spec:
           env:
             - name: LLM_MODEL
               value: "granite-3-2-8b-instruct"
+            - name: SLOSCOPE_STORE_DIR
+              value: "/app/artifacts"
           envFrom:
             - secretRef:
                 name: sloscope-secrets
+          volumeMounts:
+            - name: artifacts
+              mountPath: /app/artifacts
           readinessProbe:
             httpGet:
               path: /health
@@ -126,6 +131,9 @@ spec:
               name: oauth-proxy-secret
               readOnly: true
       volumes:
+        - name: artifacts
+          persistentVolumeClaim:
+            claimName: sloscope-artifacts
         - name: oauth-proxy-secret
           secret:
             secretName: sloscope-oauth-secret
