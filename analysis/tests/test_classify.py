@@ -33,6 +33,7 @@ from classify import (
     check_severity_consistency,
     classify,
     extract_signal_values as classify_extract_values,
+    normalized_report_class,
     MAX_RETRIES,
 )
 
@@ -235,6 +236,35 @@ class TestClassConsistency:
         assert len(errors) > 0
         assert "inconsistent" in errors[0].lower()
 
+    def test_dependency_refinement_normalizes_to_latency_regression(self):
+        signal = _load_fixture("latency_regression")
+        signal["dominant_signal"]["class"] = "dependency_latency_regression"
+        assert normalized_report_class(signal) == "latency_regression"
+
+        response = _load_response("latency_regression")
+        errors = check_class_consistency(response, signal)
+        assert errors == []
+
+    def test_error_category_refinement_normalizes_to_error_rate_elevation(self):
+        signal = _load_fixture("error_rate_elevation")
+        signal["dominant_signal"]["class"] = "error_category_shift"
+        signal["indicators"][0]["first_pass_class"] = "error_category_shift"
+        signal["indicators"][0]["band_breach"] = True
+        assert normalized_report_class(signal) == "error_rate_elevation"
+
+        response = _load_response("error_rate_elevation")
+        errors = check_class_consistency(response, signal)
+        assert errors == []
+
+    def test_error_category_mixed_breaches_normalizes_to_distribution_shift(self):
+        signal = _load_fixture("error_rate_elevation")
+        signal["dominant_signal"]["class"] = "error_category_shift"
+        signal["indicators"][0]["first_pass_class"] = "error_category_shift"
+        signal["indicators"][0]["band_breach"] = True
+        signal["indicators"][1]["first_pass_class"] = "latency_regression"
+        signal["indicators"][1]["band_breach"] = True
+        assert normalized_report_class(signal) == "distribution_shift"
+
 
 # ---------------------------------------------------------------------------
 # Test 6: No-actuation check catches kubectl commands
@@ -352,6 +382,23 @@ class TestRepairLoop:
         assert result["schema_version"] == 1
         assert result["classification"] == "latency_regression"
         assert mock_client.chat.completions.create.call_count == 1
+
+    def test_explicit_context_argument_overrides_env(self, monkeypatch):
+        signal = _load_fixture("latency_regression")
+        valid_response = _load_response("latency_regression")
+
+        monkeypatch.setenv("SLOSCOPE_CONTEXT_TYPE", "service")
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = _make_mock_response(
+            json.dumps(valid_response)
+        )
+
+        classify(signal, client=mock_client, model="test-model", context_type="infra")
+
+        messages = mock_client.chat.completions.create.call_args.kwargs["messages"]
+        user_content = messages[1]["content"]
+        assert "Context: infra" in user_content
 
     def test_invalid_json_retries_then_succeeds(self):
         signal = _load_fixture("latency_regression")

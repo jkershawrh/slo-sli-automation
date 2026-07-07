@@ -301,7 +301,11 @@ func runGenerate(args []string) error {
 	if svcName == "" {
 		svcName = "unknown"
 	}
-	promRules, err := render.RenderPrometheusRules(proposal, svcName)
+	nsName := *namespace
+	if nsName == "" {
+		nsName = "default"
+	}
+	promRules, err := render.RenderPrometheusRules(proposal, svcName, nsName)
 	if err != nil {
 		return fmt.Errorf("rendering Prometheus rules: %w", err)
 	}

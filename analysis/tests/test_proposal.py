@@ -275,6 +275,30 @@ class TestRepairLoop:
         # Should only have been called once
         assert mock_client.chat.completions.create.call_count == 1
 
+    def test_explicit_context_arguments_override_env(self, monkeypatch):
+        baseline = _load_baseline("web_api_baseline")
+        valid_response = _load_response("web_api_baseline")
+
+        monkeypatch.setenv("SLOSCOPE_MATURITY_TIER", "new")
+        monkeypatch.setenv("SLOSCOPE_CONTEXT_TYPE", "service")
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = _make_mock_response(
+            json.dumps(valid_response)
+        )
+
+        propose(
+            baseline,
+            client=mock_client,
+            model="test-model",
+            maturity="mature",
+            context_type="infra",
+        )
+
+        messages = mock_client.chat.completions.create.call_args.kwargs["messages"]
+        user_content = messages[1]["content"]
+        assert "Context: infra (maturity: mature)" in user_content
+
     def test_invalid_json_retries(self):
         baseline = _load_baseline("web_api_baseline")
         valid_response = _load_response("web_api_baseline")

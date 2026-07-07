@@ -151,13 +151,15 @@ def get_model():
     return model
 
 
-def propose(baseline, client=None, model=None):
+def propose(baseline, client=None, model=None, maturity=None, context_type=None):
     """Generate an SLO proposal from a baseline artifact using the LLM.
 
     Args:
         baseline: A dict conforming to baseline.schema.json.
         client: Optional OpenAI client (created from env vars if None).
         model: Optional model name (read from env var if None).
+        maturity: Optional maturity tier. Falls back to SLOSCOPE_MATURITY_TIER.
+        context_type: Optional context type. Falls back to SLOSCOPE_CONTEXT_TYPE.
 
     Returns:
         A dict conforming to proposal.schema.json.
@@ -172,8 +174,8 @@ def propose(baseline, client=None, model=None):
     if model is None:
         model = get_model()
 
-    maturity = os.environ.get("SLOSCOPE_MATURITY_TIER", "growing")
-    context_type = os.environ.get("SLOSCOPE_CONTEXT_TYPE", "service")
+    maturity = maturity or os.environ.get("SLOSCOPE_MATURITY_TIER", "growing")
+    context_type = context_type or os.environ.get("SLOSCOPE_CONTEXT_TYPE", "service")
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},

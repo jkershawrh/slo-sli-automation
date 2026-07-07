@@ -49,6 +49,11 @@ CONSISTENT_CLASSES = {
     "no_significant_drift": {"no_significant_drift"},
 }
 
+REFINED_CLASS_DEFAULTS = {
+    "dependency_latency_regression": "latency_regression",
+    "error_category_shift": "error_rate_elevation",
+}
+
 # Actuation patterns to reject
 ACTUATION_COMMANDS = re.compile(
     r"\b(kubectl|oc|curl|docker|helm)\b", re.IGNORECASE
@@ -272,12 +277,32 @@ def check_class_validity(report, drift_signal):
         return False
 
     # Must be consistent with dominant deterministic signal
-    dominant_class = drift_signal.get("dominant_signal", {}).get("class", "")
+    dominant_class = normalized_report_class(drift_signal)
     if dominant_class not in CONSISTENT_CLASSES:
         # Unknown dominant class -- allow any valid taxonomy member
         return True
 
     return classification in CONSISTENT_CLASSES[dominant_class]
+
+
+def normalized_report_class(drift_signal):
+    """Map refined drift-signal classes onto the final report taxonomy."""
+    dominant_class = drift_signal.get("dominant_signal", {}).get("class", "")
+    if dominant_class != "error_category_shift":
+        return REFINED_CLASS_DEFAULTS.get(dominant_class, dominant_class)
+
+    breached_classes = set()
+    for indicator in drift_signal.get("indicators", []):
+        if not indicator.get("band_breach"):
+            continue
+        first_pass = indicator.get("first_pass_class", "")
+        mapped = REFINED_CLASS_DEFAULTS.get(first_pass, first_pass)
+        if mapped and mapped != "no_significant_drift":
+            breached_classes.add(mapped)
+
+    if len(breached_classes) > 1:
+        return "distribution_shift"
+    return "error_rate_elevation"
 
 
 def check_no_actuation(report):

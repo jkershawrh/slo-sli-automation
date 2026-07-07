@@ -2,9 +2,6 @@
 bin/
 *.exe
 
-# Go
-go.sum
-
 # Node
 node_modules/
 frontend/dist/
