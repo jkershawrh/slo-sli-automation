@@ -222,11 +222,13 @@ scripts/
 
 ## Frontend
 
-Three-mode single-page app (React + Vite): **slides** for presentation walkthroughs, **demo** for live SLO generation against the backend API, and **lab** for hands-on guided exercises. Served as static files by the backend in production.
+Three-mode single-page app (React + Vite): **slides** for presentation walkthroughs, **demo** for fixture-backed SLO generation against the backend API, and **lab** for hands-on guided exercises. Served as static files by the backend in production.
 
 ## Backend API
 
-FastAPI server (`backend/server.py`) exposing the full pipeline as REST endpoints: evidence collection, baseline computation, SLO proposal (with LLM fallback to recorded responses), drift signal/classification, and artifact rendering (OpenSLO YAML + Prometheus rules). Serves the frontend SPA in production.
+FastAPI server (`backend/server.py`) exposing the demo pipeline as REST endpoints: fixture evidence loading, baseline computation, SLO proposal (with LLM fallback to recorded responses), drift signal/classification, and artifact rendering (OpenSLO YAML + Prometheus rules). Serves the frontend SPA in production. Live Prometheus/Thanos collection remains in the Go CLI.
+
+By default the backend allows local development origins. Set `SLOSCOPE_CORS_ORIGINS` to a comma-separated list for deployed frontends, or set `SLOSCOPE_ALLOW_ANY_ORIGIN=true` to explicitly allow wildcard CORS for throwaway demos.
 
 ## Development methodology
 

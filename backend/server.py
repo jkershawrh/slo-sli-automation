@@ -3,6 +3,7 @@
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -29,9 +30,30 @@ from serialize import serialize
 
 app = FastAPI(title="sloscope API", version="0.1.0")
 
+
+def get_cors_origins():
+    """Resolve CORS origins from environment with explicit wildcard opt-in."""
+    allow_any = os.environ.get("SLOSCOPE_ALLOW_ANY_ORIGIN", "").lower()
+    if allow_any in ("1", "true", "yes"):
+        return ["*"]
+
+    raw = os.environ.get("SLOSCOPE_CORS_ORIGINS", "")
+    if raw:
+        origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+        if origins:
+            return origins
+
+    return [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+    ]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=get_cors_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -58,10 +80,12 @@ class DriftSignalRequest(BaseModel):
 
 class DriftClassifyRequest(BaseModel):
     drift_signal: dict
+    context_type: str = "service"
 
 class RenderRequest(BaseModel):
     proposal: dict
     service: str = "checkout-api"
+    namespace: str = "payments"
 
 
 # --- Fixture loading ---
@@ -97,6 +121,7 @@ def health():
 
 @app.post("/api/v1/evidence")
 def collect_evidence(req: EvidenceRequest):
+    """Load demo fixture evidence and patch service/namespace for the request."""
     fixture_key = req.fixture or req.service
     fixture_path = EVIDENCE_FIXTURES.get(fixture_key)
     if not fixture_path or not fixture_path.exists():
@@ -120,10 +145,6 @@ def compute_baseline_endpoint(req: BaselineRequest):
 
 @app.post("/api/v1/propose")
 def propose_slos(req: ProposeRequest):
-    # Set environment variables for the LLM stage
-    os.environ["SLOSCOPE_MATURITY_TIER"] = req.maturity
-    os.environ["SLOSCOPE_CONTEXT_TYPE"] = req.context_type
-
     # Check if LLM is configured
     llm_base = os.environ.get("LLM_BASE_URL", "")
     llm_key = os.environ.get("LLM_API_KEY", "")
@@ -143,7 +164,11 @@ def propose_slos(req: ProposeRequest):
 
     try:
         from propose import propose
-        result = propose(req.baseline)
+        result = propose(
+            req.baseline,
+            maturity=req.maturity,
+            context_type=req.context_type,
+        )
         return result
     except Exception as e:
         raise HTTPException(500, f"Proposal failed: {e}")
@@ -170,7 +195,8 @@ def classify_drift(req: DriftClassifyRequest):
 
     if not llm_base or not llm_key:
         # Fall back to recorded response based on dominant signal class
-        dominant_class = req.drift_signal.get("dominant_signal", {}).get("class", "no_significant_drift")
+        from classify import normalized_report_class
+        dominant_class = normalized_report_class(req.drift_signal)
         recorded_path = DRIFT_RECORDED_DIR / f"{dominant_class}_response.json"
         if recorded_path.exists():
             return load_fixture(recorded_path)
@@ -178,7 +204,7 @@ def classify_drift(req: DriftClassifyRequest):
 
     try:
         from classify import classify
-        result = classify(req.drift_signal)
+        result = classify(req.drift_signal, context_type=req.context_type)
         return result
     except Exception as e:
         raise HTTPException(500, f"Classification failed: {e}")
@@ -189,10 +215,11 @@ def render_artifacts(req: RenderRequest):
     """Render OpenSLO YAML, Prometheus rules, and audit bundle from a proposal."""
     proposal = req.proposal
     service = req.service
+    namespace = req.namespace
 
     # Simple Python-side rendering for the demo
     openslo = render_openslo(proposal)
-    prom_rules = render_prom_rules(proposal, service)
+    prom_rules = render_prom_rules(proposal, service, namespace)
 
     return {
         "openslo_yaml": openslo,
@@ -227,29 +254,114 @@ def render_openslo(proposal):
     return "\n".join(lines)
 
 
-def render_prom_rules(proposal, service):
+K8S_NAME_RE = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
+METRIC_SEGMENT_RE = re.compile(r"[^a-zA-Z0-9_]")
+UNDERSCORE_RE = re.compile(r"_+")
+
+
+def validate_k8s_name(field, value):
+    if not value or len(value) > 63 or not K8S_NAME_RE.match(value):
+        raise HTTPException(400, f"{field} must be a Kubernetes DNS label")
+
+
+def prom_label_value(value):
+    return value.replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
+
+
+def prom_regex_literal(value):
+    return prom_label_value(re.escape(value))
+
+
+def prom_metric_segment(value):
+    value = value.lower().replace("-", "_").replace(" ", "_")
+    value = METRIC_SEGMENT_RE.sub("_", value)
+    value = UNDERSCORE_RE.sub("_", value).strip("_")
+    if not value:
+        return "unnamed"
+    if value[0].isdigit():
+        value = "_" + value
+    return value
+
+
+def render_prom_rules(proposal, service, namespace="payments"):
     """Lightweight Python-side Prometheus rules rendering."""
+    validate_k8s_name("service", service)
+    validate_k8s_name("namespace", namespace)
+
+    service_label = prom_label_value(service)
+    namespace_label = prom_label_value(namespace)
+    selector = f'service="{service_label}",namespace="{namespace_label}"'
+    label_selector = f'{{service="{service_label}",namespace="{namespace_label}"}}'
+
     lines = ["groups:"]
-    lines.append(f"  - name: {service}_slo_recording")
+    lines.append(f"  - name: {prom_metric_segment(service)}_slo_recording")
     lines.append("    rules:")
 
     for slo in proposal.get("slos", []):
-        name = slo.get("sli_name", "unnamed").lower().replace(" ", "-").replace("_", "-")
+        name = prom_metric_segment(slo.get("sli_name", "unnamed"))
         sli_type = slo.get("sli_type", "")
 
         if sli_type in ("availability", "error_rate"):
             lines.append(f"      - record: slo:{name}:error_ratio")
             lines.append("        expr: |")
-            lines.append(f'          sum(rate(http_requests_total{{service="{service}",code=~"5.."}}[5m]))')
+            lines.append(f"          sum(rate(http_requests_total{{{selector},code=~\"5..\"}}[5m]))")
             lines.append("          /")
-            lines.append(f'          sum(rate(http_requests_total{{service="{service}"}}[5m]))')
+            lines.append(f"          sum(rate(http_requests_total{{{selector}}}[5m]))")
+            lines.append("        labels:")
+            lines.append(f"          service: {service}")
+            lines.append(f"          namespace: {namespace}")
+            lines.append(f"          slo: {name}")
         elif sli_type == "latency":
             target_sec = slo.get("sla_target", slo.get("target", 0)) / 1000
             lines.append(f"      - record: slo:{name}:latency_ratio")
             lines.append("        expr: |")
-            lines.append(f'          sum(rate(http_request_duration_seconds_bucket{{service="{service}",le="{target_sec}"}}[5m]))')
+            lines.append(f"          sum(rate(http_request_duration_seconds_bucket{{{selector},le=\"{target_sec}\"}}[5m]))")
             lines.append("          /")
-            lines.append(f'          sum(rate(http_request_duration_seconds_count{{service="{service}"}}[5m]))')
+            lines.append(f"          sum(rate(http_request_duration_seconds_count{{{selector}}}[5m]))")
+            lines.append("        labels:")
+            lines.append(f"          service: {service}")
+            lines.append(f"          namespace: {namespace}")
+            lines.append(f"          slo: {name}")
+
+    lines.append("")
+    lines.append(f"  - name: {prom_metric_segment(service)}_slo_alerts")
+    lines.append("    rules:")
+
+    for slo in proposal.get("slos", []):
+        name = prom_metric_segment(slo.get("sli_name", "unnamed"))
+        error_budget = slo.get("error_budget_percent", 0) / 100
+        for window in slo.get("burn_rate_policy", {}).get("windows", []):
+            severity = window.get("severity", "warning")
+            long_window = window.get("long_window", "1h")
+            short_window = window.get("short_window", "5m")
+            burn_rate = window.get("burn_rate", 1)
+            alert_name = "".join(
+                part.capitalize()
+                for part in re.split(r"[^a-zA-Z0-9]+", slo.get("sli_name", "slo"))
+                if part
+            )
+            lines.append(f"      - alert: SLO{alert_name}BurnRate{severity.capitalize()}")
+            lines.append("        expr: |")
+            if slo.get("sli_type") in ("availability", "error_rate"):
+                lines.append(f"          avg_over_time(slo:{name}:error_ratio{label_selector}[{long_window}]) > {burn_rate} * {error_budget}")
+                lines.append("          and")
+                lines.append(f"          avg_over_time(slo:{name}:error_ratio{label_selector}[{short_window}]) > {burn_rate} * {error_budget}")
+            elif slo.get("sli_type") == "latency":
+                target_sec = slo.get("sla_target", slo.get("target", 0)) / 1000
+                lines.append("          (")
+                lines.append(f"            1 - (sum(rate(http_request_duration_seconds_bucket{{{selector},le=\"{target_sec}\"}}[{long_window}])) / sum(rate(http_request_duration_seconds_count{{{selector}}}[{long_window}])))")
+                lines.append(f"          ) > {burn_rate} * {error_budget}")
+                lines.append("          and")
+                lines.append("          (")
+                lines.append(f"            1 - (sum(rate(http_request_duration_seconds_bucket{{{selector},le=\"{target_sec}\"}}[{short_window}])) / sum(rate(http_request_duration_seconds_count{{{selector}}}[{short_window}])))")
+                lines.append(f"          ) > {burn_rate} * {error_budget}")
+            else:
+                continue
+            lines.append("        labels:")
+            lines.append(f"          severity: {severity}")
+            lines.append(f"          service: {service}")
+            lines.append(f"          namespace: {namespace}")
+            lines.append(f"          slo: {name}")
 
     return "\n".join(lines)
 

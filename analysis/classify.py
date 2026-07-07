@@ -46,6 +46,11 @@ CONSISTENT_CLASSES = {
     "no_significant_drift": {"no_significant_drift"},
 }
 
+REFINED_CLASS_DEFAULTS = {
+    "dependency_latency_regression": "latency_regression",
+    "error_category_shift": "error_rate_elevation",
+}
+
 # Actuation patterns to detect and reject
 ACTUATION_COMMANDS = re.compile(
     r"\b(kubectl|oc|curl|docker|helm)\b", re.IGNORECASE
@@ -335,7 +340,7 @@ def check_class_consistency(report, drift_signal):
         )
         return errors
 
-    dominant_class = drift_signal.get("dominant_signal", {}).get("class", "")
+    dominant_class = normalized_report_class(drift_signal)
     if dominant_class not in CONSISTENT_CLASSES:
         return errors  # unknown dominant class, allow any valid taxonomy
 
@@ -350,6 +355,26 @@ def check_class_consistency(report, drift_signal):
         )
 
     return errors
+
+
+def normalized_report_class(drift_signal):
+    """Map refined deterministic signal classes onto final report taxonomy."""
+    dominant_class = drift_signal.get("dominant_signal", {}).get("class", "")
+    if dominant_class != "error_category_shift":
+        return REFINED_CLASS_DEFAULTS.get(dominant_class, dominant_class)
+
+    breached_classes = set()
+    for indicator in drift_signal.get("indicators", []):
+        if not indicator.get("band_breach"):
+            continue
+        first_pass = indicator.get("first_pass_class", "")
+        mapped = REFINED_CLASS_DEFAULTS.get(first_pass, first_pass)
+        if mapped and mapped != "no_significant_drift":
+            breached_classes.add(mapped)
+
+    if len(breached_classes) > 1:
+        return "distribution_shift"
+    return "error_rate_elevation"
 
 
 def check_severity_consistency(report, drift_signal):
@@ -392,13 +417,14 @@ def check_severity_consistency(report, drift_signal):
     return errors
 
 
-def classify(drift_signal, client=None, model=None):
+def classify(drift_signal, client=None, model=None, context_type=None):
     """Classify a drift-signal artifact using the LLM.
 
     Args:
         drift_signal: A dict conforming to drift-signal.schema.json.
         client: Optional OpenAI client (created from env vars if None).
         model: Optional model name (read from env var if None).
+        context_type: Optional context type. Falls back to SLOSCOPE_CONTEXT_TYPE.
 
     Returns:
         A dict conforming to drift-report.schema.json.
@@ -413,7 +439,7 @@ def classify(drift_signal, client=None, model=None):
     if model is None:
         model = get_model()
 
-    context_type = os.environ.get("SLOSCOPE_CONTEXT_TYPE", "service")
+    context_type = context_type or os.environ.get("SLOSCOPE_CONTEXT_TYPE", "service")
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
