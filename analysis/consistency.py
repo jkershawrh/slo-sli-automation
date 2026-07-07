@@ -65,6 +65,13 @@ def check_consistency(proposal, baseline):
         if observed is None:
             continue  # Can't check without observed data
 
+        # Skip checks for boundary values where improvement is impossible
+        # e.g., availability = 1.0 (can't go above 100%), error_rate = 0 (can't go below 0)
+        op = EXPECTED_OPS.get(sli_type, "lte")
+        at_boundary = (op == "gte" and observed >= 1.0) or (op == "lte" and observed <= 0)
+        if at_boundary:
+            continue
+
         # Check 2: slo_target must be tighter than observed
         if not _is_tighter(slo_target, observed, sli_type):
             errors.append(
@@ -179,8 +186,10 @@ def _get_observed_and_stddev(sli_type, indicators):
         tp = indicators.get("throughput", {})
         return tp.get("mean_rps"), tp.get("stddev_rps")
     elif sli_type == "saturation":
-        sat = indicators.get("saturation", {})
-        return sat.get("cpu_p95_ratio"), None  # No stddev available for saturation in schema
+        # Saturation has CPU and memory sub-metrics; the LLM may propose
+        # separate SLOs for each. Return None to skip consistency checks
+        # since we can't know which sub-metric the SLO refers to.
+        return None, None
     return None, None
 
 
