@@ -1,0 +1,257 @@
+{
+  "baseline_computation": {
+    "full_evidence": {
+      "deterministic": true,
+      "indicators": [
+        "latency",
+        "error_rate",
+        "availability",
+        "throughput",
+        "saturation",
+        "trace_latency",
+        "error_breakdown"
+      ],
+      "max_ms": 125.34,
+      "mean_ms": 40.64,
+      "min_ms": 27.73,
+      "runs": 10
+    },
+    "metrics_only": {
+      "deterministic": true,
+      "indicators": [
+        "latency",
+        "error_rate",
+        "availability",
+        "throughput",
+        "saturation"
+      ],
+      "max_ms": 250.38,
+      "mean_ms": 67.48,
+      "min_ms": 31.88,
+      "runs": 10
+    }
+  },
+  "deviation_computation": {
+    "latency_regression": {
+      "breached_count": 2,
+      "dominant_class": "latency_regression",
+      "indicators_count": 7,
+      "max_ms": 38.01,
+      "mean_ms": 34.35,
+      "min_ms": 33.2,
+      "runs": 10
+    },
+    "no_drift": {
+      "breached_count": 0,
+      "dominant_class": "no_significant_drift",
+      "indicators_count": 7,
+      "max_ms": 225.6,
+      "mean_ms": 55.4,
+      "min_ms": 33.09,
+      "runs": 10
+    }
+  },
+  "e2e_pipeline": {
+    "drift_dry_run_exit": 0,
+    "drift_dry_run_ms": 221.09,
+    "generate_dry_run_exit": 0,
+    "generate_dry_run_ms": 253.5
+  },
+  "environment": {
+    "architecture": "arm64",
+    "go_version": "go1.26.4",
+    "platform": "macOS-26.5-arm64-arm-64bit",
+    "python_version": "3.9.6",
+    "timestamp": "2026-07-07T04:20:29Z"
+  },
+  "eval_grids": {
+    "drift_eval": {
+      "eval_time_ms": 42.59,
+      "failed": 0,
+      "passed": 10,
+      "scenarios": {
+        "availability_drop": {
+          "pass": true
+        },
+        "distribution_shift": {
+          "pass": true
+        },
+        "error_rate_elevation": {
+          "pass": true
+        },
+        "error_rate_reduction": {
+          "pass": true
+        },
+        "latency_improvement": {
+          "pass": true
+        },
+        "latency_regression": {
+          "pass": true
+        },
+        "no_significant_drift": {
+          "pass": true
+        },
+        "saturation_approach": {
+          "pass": true
+        },
+        "throughput_collapse": {
+          "pass": true
+        },
+        "throughput_surge": {
+          "pass": true
+        }
+      },
+      "total_scenarios": 10
+    },
+    "proposal_eval": {
+      "eval_time_ms": 28.33,
+      "failed": 0,
+      "passed": 4,
+      "scenarios": {
+        "batch_processor_baseline": {
+          "pass": true
+        },
+        "high_traffic_baseline": {
+          "pass": true
+        },
+        "web_api_baseline": {
+          "pass": true
+        },
+        "web_api_baseline_full": {
+          "pass": true
+        }
+      },
+      "total_scenarios": 4
+    }
+  },
+  "llm_drift": {
+    "granite-3-2-8b-instruct": {
+      "classification": "latency_regression",
+      "classification_correct": true,
+      "expected": "latency_regression",
+      "has_remediation_plan": true,
+      "latency_s": 10.41,
+      "recommendations": 1,
+      "schema_valid": true,
+      "severity": "medium",
+      "status": "pass"
+    },
+    "qwen3-235b": {
+      "classification": "latency_regression",
+      "classification_correct": true,
+      "expected": "latency_regression",
+      "has_remediation_plan": true,
+      "latency_s": 32.87,
+      "recommendations": 3,
+      "schema_valid": true,
+      "severity": "low",
+      "status": "pass"
+    }
+  },
+  "llm_proposal": {
+    "granite-3-2-8b-instruct": {
+      "attempts": [
+        {
+          "error": "LLM failed consistency check after 3 retries. Last error: Consistency check failed: SLO 'availability': sla_target 0.999",
+          "latency_s": 82.7,
+          "status": "error"
+        },
+        {
+          "error": "LLM failed consistency check after 3 retries. Last error: Consistency check failed: SLO 'availability': sla_target 0.999",
+          "latency_s": 88.01,
+          "status": "error"
+        }
+      ],
+      "avg_latency_s": 85.36,
+      "pass_rate": 0.0
+    },
+    "qwen3-235b": {
+      "attempts": [
+        {
+          "consistency_errors": 0,
+          "direction_correct": true,
+          "has_sla_target": true,
+          "has_slo_target": true,
+          "latency_s": 78.68,
+          "schema_valid": true,
+          "schema_version": 3,
+          "slos_count": 4,
+          "status": "pass",
+          "targets": [
+            {
+              "name": "availability",
+              "op": "gte",
+              "sla": 0.997,
+              "slo": 0.9982,
+              "type": "availability"
+            },
+            {
+              "name": "error_rate",
+              "op": "lte",
+              "sla": 0.0026,
+              "slo": 0.0018,
+              "type": "error_rate"
+            },
+            {
+              "name": "latency",
+              "op": "lte",
+              "sla": 6000,
+              "slo": 4500,
+              "type": "latency"
+            },
+            {
+              "name": "throughput",
+              "op": "gte",
+              "sla": 2.9,
+              "slo": 3.8,
+              "type": "throughput"
+            }
+          ]
+        },
+        {
+          "consistency_errors": 0,
+          "direction_correct": true,
+          "has_sla_target": true,
+          "has_slo_target": true,
+          "latency_s": 35.83,
+          "schema_valid": true,
+          "schema_version": 3,
+          "slos_count": 4,
+          "status": "pass",
+          "targets": [
+            {
+              "name": "availability",
+              "op": "gte",
+              "sla": 0.997,
+              "slo": 0.9982,
+              "type": "availability"
+            },
+            {
+              "name": "p99_latency",
+              "op": "lte",
+              "sla": 6000,
+              "slo": 4000,
+              "type": "latency"
+            },
+            {
+              "name": "error_rate",
+              "op": "lte",
+              "sla": 0.003,
+              "slo": 0.0018,
+              "type": "error_rate"
+            },
+            {
+              "name": "throughput",
+              "op": "gte",
+              "sla": 2.9,
+              "slo": 3.8,
+              "type": "throughput"
+            }
+          ]
+        }
+      ],
+      "avg_latency_s": 57.26,
+      "pass_rate": 1.0
+    }
+  }
+}

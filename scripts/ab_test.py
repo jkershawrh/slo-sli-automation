@@ -75,17 +75,21 @@ Include burn_rate_policy with at least 2 windows.
 }
 """
 
-# --- Models to test ---
+# --- Models to test (keys from environment) ---
+CPU_KEY = os.environ.get("SLOSCOPE_CPU_KEY", "")
+GPU_KEY = os.environ.get("SLOSCOPE_GPU_KEY", "")
+API_KEY = os.environ.get("SLOSCOPE_API_KEY", os.environ.get("LLM_API_KEY", ""))
+
 MODELS = [
-    ("granite-3-2-8b-instruct-cpu", "sk-HjSvtHOc5T1zUv1p5_ygwg", "CPU"),
-    ("granite-3-2-8b-instruct",     "sk-hGlhZ_jtuPF71vs6SOFTnQ", "GPU"),
-    ("granite-4-0-h-tiny",          "sk-hGlhZ_jtuPF71vs6SOFTnQ", "GPU"),
-    ("microsoft-phi-4",             "sk-hGlhZ_jtuPF71vs6SOFTnQ", "GPU"),
-    ("llama-scout-17b",             "sk-hGlhZ_jtuPF71vs6SOFTnQ", "GPU"),
-    ("qwen3-235b",                  "sk-pwpJSxg7SDb4ygwJ0VX_nw", "API"),
+    ("granite-3-2-8b-instruct-cpu", CPU_KEY, "CPU"),
+    ("granite-3-2-8b-instruct",     GPU_KEY, "GPU"),
+    ("granite-4-0-h-tiny",          GPU_KEY, "GPU"),
+    ("microsoft-phi-4",             GPU_KEY, "GPU"),
+    ("llama-scout-17b",             GPU_KEY, "GPU"),
+    ("qwen3-235b",                  API_KEY, "API"),
 ]
 
-BASE_URL = "https://maas-rhdp.apps.maas.redhatworkshops.io/v1"
+BASE_URL = os.environ.get("LLM_BASE_URL", "https://maas-rhdp.apps.maas.redhatworkshops.io/v1")
 
 
 def test_proposal(model, api_key, prompt, baseline):
