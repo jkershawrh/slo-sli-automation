@@ -80,10 +80,10 @@ The SLO is always stricter than the SLA. The gap between them is the error budge
 
 | Category | Count |
 |----------|-------|
-| Go tests | 83 |
-| Python tests | 417 |
+| Go tests | 88 |
+| Python tests | 431 |
 | Frontend tests | 23 |
-| **Total tests** | **525** |
+| **Total tests** | **542** |
 | Verification checks (verify.sh) | 29 |
 | Proposal eval scenarios | 4 |
 | Drift eval scenarios | 10 |
@@ -202,7 +202,7 @@ This multi-signal evidence is what enables the LLM to produce differentiated rem
 
 ## 9. Conclusion
 
-Evidence-first SLO generation with a proper SLI/SLO/SLA hierarchy requires a model capable of nuanced directional reasoning. The benchmark demonstrates this concretely: qwen3-235b achieves 100% pass rate on schema v3 proposal generation with correct directional operators across all four golden signals, while granite-3-2-8b-instruct fails every attempt by defaulting to aspirational targets that violate the SLO-stricter-than-SLA constraint. The deterministic stages -- baseline computation, deviation measurement, eval grids -- are fast (sub-300ms E2E), byte-for-byte reproducible, and independent of any LLM. With 525 tests, 29 verification checks, and 14 eval scenarios all passing, sloscope is ready for production use: dry-run drift checks gate deployment readiness in 221ms, and full LLM-driven analysis delivers classified remediation in under 33 seconds.
+Evidence-first SLO generation with a proper SLI/SLO/SLA hierarchy requires a model capable of nuanced directional reasoning. The benchmark demonstrates this concretely: qwen3-235b achieves 100% pass rate on schema v3 proposal generation with correct directional operators across all four golden signals, while granite-3-2-8b-instruct fails every attempt by defaulting to aspirational targets that violate the SLO-stricter-than-SLA constraint. The deterministic stages -- baseline computation, deviation measurement, eval grids -- are fast (sub-300ms E2E), byte-for-byte reproducible, and independent of any LLM. With 542 tests, 29 verification checks, and 14 eval scenarios all passing, sloscope is ready for production use: dry-run drift checks gate deployment readiness in 221ms, and full LLM-driven analysis delivers classified remediation in under 33 seconds.
 
 ---
 
