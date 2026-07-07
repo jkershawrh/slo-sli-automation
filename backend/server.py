@@ -420,6 +420,7 @@ def get_baseline_fixture(service: str):
 
 # --- Artifact store + v2 dashboard API ---
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from store import ArtifactStore
 
 store = ArtifactStore()
