@@ -18,9 +18,9 @@ sloscope solves both problems by grounding every SLO in observed telemetry:
 
 Two stages. Evidence first, judgment second.
 
-**Stage one is deterministic.** Query Prometheus/Thanos, compute empirical baselines in code: latency percentiles, error rates, throughput distribution, availability, saturation. No LLM touches this. The numbers are measured, reproducible, and auditable.
+**Stage one is deterministic.** Query Prometheus/Thanos for metrics, optionally enrich with traces (Tempo/Jaeger) and logs (Loki/Elasticsearch), then compute empirical baselines in code: latency percentiles, error rates, throughput distribution, availability, saturation, dependency latency breakdowns, and error category distributions. No LLM touches this. The numbers are measured, reproducible, and auditable.
 
-**Stage two is judgment.** Hand the computed evidence to an LLM (any OpenAI-compatible endpoint -- LiteLLM, vLLM, Ollama, or a hosted API). It proposes SLO targets with stddev-based headroom, classifies drift with prioritized remediation plans, and writes rationale citing specific observed values. It never fabricates a number, and it never actuates.
+**Stage two is judgment.** Hand the computed evidence to an LLM (any OpenAI-compatible endpoint -- LiteLLM, vLLM, Ollama, or a hosted API). It proposes both an SLO target (objective -- where you aim, tighter than observed) and an SLA target (commitment -- what you guarantee, with headroom). It classifies drift with prioritized remediation plans and writes rationale citing specific observed values. It never fabricates a number, and it never actuates.
 
 ```
           Kubernetes / OpenShift Cluster
@@ -56,14 +56,22 @@ Two stages. Evidence first, judgment second.
 ### Environment
 
 ```bash
-# Prometheus/Thanos (Thanos Querier route on OpenShift, or any compatible endpoint)
-export PROM_URL="https://thanos-querier.openshift-monitoring.svc:9091"
-export PROM_TOKEN="..."                                     # Optional bearer token for in-cluster Thanos
+# Metrics (required)
+export PROM_URL="https://thanos-querier.example.com:9091"
+export PROM_TOKEN="..."                    # Optional bearer token
 
-# LLM (OpenAI-compatible -- LiteLLM, vLLM, Ollama, or any hosted endpoint)
+# Traces (optional -- enriches evidence with dependency latency breakdowns)
+export TEMPO_URL="https://tempo.example.com:3200"
+export TEMPO_TOKEN="..."
+
+# Logs (optional -- enriches evidence with error category breakdowns)
+export LOKI_URL="https://loki.example.com:3100"
+export LOKI_TOKEN="..."
+
+# LLM (any OpenAI-compatible endpoint)
 export LLM_BASE_URL="https://llm.example.com/v1"
 export LLM_API_KEY="..."
-export LLM_MODEL="granite-3-2-8b-instruct"
+export LLM_MODEL="qwen3-235b"             # or any model that handles structured JSON
 ```
 
 ### Generate SLOs
@@ -135,6 +143,18 @@ sloscope encodes directionality explicitly for each signal -- the comparison ope
 | (Derived) | `availability` | `gte` | Availability at or above target | availability >= 0.996 |
 
 Targets always include headroom based on observed variance. The tool never proposes a target equal to the observed value -- there is always margin so normal fluctuation does not trigger alerts.
+
+## SLI / SLO / SLA hierarchy
+
+sloscope enforces a strict three-level hierarchy:
+
+| Level | What it is | Direction vs observed |
+|-------|-----------|----------------------|
+| **SLI** (Indicator) | The measurement -- p99 latency, error rate, availability | This is the 30-day average |
+| **SLO** (Objective) | Where you aim -- aspirational but reachable | Tighter than observed |
+| **SLA** (Agreement) | What you guarantee -- the alerting boundary | Looser than observed, with stddev headroom |
+
+For a latency SLI at 500ms: the SLO might be 450ms (aim lower), the SLA ceiling might be 595ms (guarantee you stay below). For availability at 99.8%: the SLO might be 99.85% (aim higher), the SLA floor might be 99.68% (guarantee you stay above).
 
 ## Incremental targets, not aspirational jumps
 
@@ -250,8 +270,47 @@ python3 -m pytest analysis/tests/ -v   # Python only
 
 | Schema | Version | Purpose |
 |--------|---------|---------|
-| `evidence.schema.json` | 1 | Raw Prometheus telemetry with provenance |
+| `evidence.schema.json` | 1-2 | Raw telemetry (v1: metrics only, v2: metrics + traces + logs) |
 | `baseline.schema.json` | 1 | Deterministic empirical baseline (versioned contract for drift) |
 | `proposal.schema.json` | 3 | LLM SLO proposal with target_op, headroom, maturity tier |
 | `drift-signal.schema.json` | 1 | Deterministic deviation measurements |
 | `drift-report.schema.json` | 1 | LLM drift classification with remediation plan |
+
+## Benchmarks
+
+Measured on the current codebase (`scripts/benchmark.py`):
+
+| Metric | Value |
+|--------|-------|
+| Baseline computation (metrics) | 67ms avg |
+| Baseline computation (metrics + traces + logs) | 41ms avg |
+| Deviation computation | 34-55ms avg |
+| E2E generate dry-run | 254ms |
+| E2E drift dry-run | 221ms |
+| Proposal eval grid | 4/4 passed |
+| Drift eval grid | 10/10 passed |
+| LLM proposal (qwen3-235b) | 100% pass, 57s avg |
+| LLM proposal (granite-3-2-8b) | 0% pass (fails directional consistency) |
+
+Full results in `benchmark-results.json`. Whitepaper with analysis in `docs/whitepaper.md`.
+
+## Deployment
+
+```bash
+# Container build and push
+make container-build
+make container-push
+
+# Deploy to OpenShift/Kubernetes
+oc apply -f deploy/deployment.yaml
+```
+
+The container image runs the FastAPI backend with the built frontend on port 8080. Configure LLM credentials via a Secret.
+
+## Local development
+
+```bash
+make dev           # Starts backend (port 8080) + frontend (port 3000)
+make test-all      # Go + Python + frontend tests
+make verify        # Full 29-check verification
+```
