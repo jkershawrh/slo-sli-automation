@@ -50,11 +50,21 @@ export function ServiceDetail({ service, onBack }: ServiceDetailProps) {
           <div style={{ fontSize: 11, fontFamily: "'Red Hat Mono', monospace", color: 'var(--text-disabled)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 }}>
             {baseline.lookback_window || '30d'} Baseline
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
-            <MetricCard label="p99 Latency" value={`${baseline.indicators?.latency?.p99_ms?.toFixed(0) || '?'}ms`} color="var(--rh-blue)" />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
+            {baseline.indicators?.latency?.p99_ms > 0 && (
+              <MetricCard label="p99 Latency" value={`${baseline.indicators.latency.p99_ms.toFixed(0)}ms`} color="var(--rh-blue)" />
+            )}
             <MetricCard label="Error Rate" value={`${((baseline.indicators?.error_rate?.ratio || 0) * 100).toFixed(2)}%`} color="var(--rh-red)" />
             <MetricCard label="Availability" value={`${((baseline.indicators?.availability?.ratio || 0) * 100).toFixed(2)}%`} color="var(--rh-green)" />
-            <MetricCard label="Throughput" value={`${baseline.indicators?.throughput?.mean_rps?.toFixed(1) || '?'} rps`} color="var(--rh-teal)" />
+            {baseline.indicators?.throughput?.mean_rps > 0 && (
+              <MetricCard label="Throughput" value={`${baseline.indicators.throughput.mean_rps.toFixed(1)} rps`} color="var(--rh-teal)" />
+            )}
+            {baseline.indicators?.saturation?.available && (
+              <>
+                <MetricCard label="CPU Usage" value={`${(baseline.indicators.saturation.cpu_mean_ratio * 100).toFixed(1)}%`} color="var(--rh-orange)" />
+                <MetricCard label="Memory Usage" value={`${(baseline.indicators.saturation.memory_mean_ratio * 100).toFixed(1)}%`} color="var(--rh-purple)" />
+              </>
+            )}
             <MetricCard label="Maturity" value={baseline.maturity_tier || 'growing'} color="var(--text-dim)" />
           </div>
         </div>

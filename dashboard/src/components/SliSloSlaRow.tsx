@@ -11,8 +11,13 @@ interface SliSloSlaRowProps {
 }
 
 export function SliSloSlaRow({ sliName, sliType, targetOp, observedValue, sloTarget, slaTarget, unit }: SliSloSlaRowProps) {
-  const isAvail = sliType === 'availability'
-  const fmt = (v: number) => isAvail ? `${(v * 100).toFixed(2)}%` : `${Math.round(v)} ${unit}`
+  const fmt = (v: number) => {
+    if (sliType === 'availability') return `${(v * 100).toFixed(2)}%`
+    if (sliType === 'error_rate' || sliType === 'saturation') return `${(v * 100).toFixed(1)}%`
+    if (Math.abs(v) < 1) return `${v.toFixed(4)} ${unit}`
+    if (Math.abs(v) < 10) return `${v.toFixed(2)} ${unit}`
+    return `${Math.round(v)} ${unit}`
+  }
   const arrow = targetOp === 'lte' ? '↓' : '↑'
   const color = targetOp === 'lte' ? 'var(--rh-blue)' : 'var(--rh-green)'
 
