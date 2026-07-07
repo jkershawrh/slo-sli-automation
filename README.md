@@ -201,6 +201,8 @@ internal/
   pipeline/                Go-to-Python subprocess orchestration (JSON stdin/stdout)
   drift/                   Baseline loading + validation, deviation input assembly
   render/                  OpenSLO, Prometheus rules, audit bundle, drift report
+  traces/                  OpenTelemetry trace correlation for SLI evidence
+  logs/                    Structured log analysis for error-rate SLIs
   schema/                  JSON schema validation (go:embed from analysis/schemas/)
 analysis/
   baseline.py              Deterministic baseline computation (histogram percentiles, rates)
@@ -210,13 +212,21 @@ analysis/
   consistency.py           Shared validation: directionality, margins, looseness bounds
   serialize.py             Canonical JSON (sorted keys, 2-space indent, 6 sig digits)
   schemas/                 JSON schemas (single source of truth, embedded in Go via go:embed)
-  evals/                   Eval fixtures (13 scenarios), rubrics, recorded responses
-  tests/                   pytest suite (347 tests)
+  evals/                   Eval fixtures (14 scenarios), rubrics, recorded responses
+  tests/                   pytest suite (417 tests)
 testdata/                  Recorded Prometheus fixtures for hermetic CI
 scripts/
   preflight.sh             Environment readiness (Go, Python, Prometheus, LLM, promtool)
-  verify.sh                Full hermetic verification: 25 checks, no live deps needed
+  verify.sh                Full hermetic verification: 29 checks, no live deps needed
 ```
+
+## Frontend
+
+Three-mode single-page app (React + Vite): **slides** for presentation walkthroughs, **demo** for live SLO generation against the backend API, and **lab** for hands-on guided exercises. Served as static files by the backend in production.
+
+## Backend API
+
+FastAPI server (`backend/server.py`) exposing the full pipeline as REST endpoints: evidence collection, baseline computation, SLO proposal (with LLM fallback to recorded responses), drift signal/classification, and artifact rendering (OpenSLO YAML + Prometheus rules). Serves the frontend SPA in production.
 
 ## Development methodology
 
@@ -243,7 +253,7 @@ go test ./... -v                       # Go only
 python3 -m pytest analysis/tests/ -v   # Python only
 ```
 
-416 tests (69 Go + 347 Python). 25 verification checks. Eval grids across 13 scenarios (3 proposal + 10 drift). Validated live against `granite-3-2-8b-instruct` on the MAAS GPU tier.
+525 tests (83 Go + 417 Python + 23 frontend). 29 verification checks. Eval grids across 14 scenarios (4 proposal + 10 drift). Validated live against `granite-3-2-8b-instruct` and `qwen3-235b` on the MAAS GPU tier.
 
 ## Schemas
 
@@ -251,6 +261,6 @@ python3 -m pytest analysis/tests/ -v   # Python only
 |--------|---------|---------|
 | `evidence.schema.json` | 1 | Raw Prometheus telemetry with provenance |
 | `baseline.schema.json` | 1 | Deterministic empirical baseline (versioned contract for drift) |
-| `proposal.schema.json` | 2 | LLM SLO proposal with target_op, headroom, maturity tier |
+| `proposal.schema.json` | 3 | LLM SLO proposal with target_op, headroom, maturity tier |
 | `drift-signal.schema.json` | 1 | Deterministic deviation measurements |
 | `drift-report.schema.json` | 1 | LLM drift classification with remediation plan |
