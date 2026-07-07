@@ -70,6 +70,33 @@ export interface Evidence {
       memory?: { metric_name: string; samples: number[] }
       available: boolean
     }
+    traces?: {
+      available: boolean
+      source: string
+      total_spans: number
+      service_spans: number
+      span_latency_p99_ms: number
+      span_latency_p50_ms: number
+      top_dependencies: Array<{
+        service: string
+        p99_ms: number
+        call_count: number
+        error_rate: number
+      }>
+      slow_span_pattern: string
+    }
+    logs?: {
+      available: boolean
+      source: string
+      total_entries: number
+      error_entries: number
+      error_breakdown: Array<{
+        category: string
+        count: number
+        ratio: number
+      }>
+      error_rate_by_category: Record<string, number>
+    }
   }
   provenance: {
     prometheus_endpoint: string
@@ -105,6 +132,19 @@ export interface Baseline {
     saturation?: {
       cpu_mean_ratio: number; cpu_p95_ratio: number
       memory_mean_ratio: number; memory_p95_ratio: number
+      available: boolean
+    }
+    trace_latency?: {
+      service_p99_ms: number
+      top_dependency: string
+      top_dependency_p99_ms: number
+      top_dependency_contribution: number
+      available: boolean
+    }
+    error_breakdown?: {
+      top_category: string
+      top_category_ratio: number
+      categories: number
       available: boolean
     }
   }

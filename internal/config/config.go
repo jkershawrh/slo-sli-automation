@@ -15,6 +15,10 @@ type Config struct {
 	LLMBaseURL string
 	LLMAPIKey  string
 	LLMModel   string
+	TempoURL   string // Optional: Tempo/Jaeger query endpoint
+	TempoToken string // Optional: bearer token
+	LokiURL    string // Optional: Loki query endpoint
+	LokiToken  string // Optional: bearer token
 }
 
 // Load reads configuration from environment variables.
@@ -28,6 +32,10 @@ func Load(dryRun bool) (*Config, error) {
 		LLMBaseURL: os.Getenv("LLM_BASE_URL"),
 		LLMAPIKey:  os.Getenv("LLM_API_KEY"),
 		LLMModel:   os.Getenv("LLM_MODEL"),
+		TempoURL:   os.Getenv("TEMPO_URL"),
+		TempoToken: os.Getenv("TEMPO_TOKEN"),
+		LokiURL:    os.Getenv("LOKI_URL"),
+		LokiToken:  os.Getenv("LOKI_TOKEN"),
 	}
 
 	// Validate PROM_URL if set.
@@ -69,8 +77,16 @@ func (c *Config) String() string {
 	if c.LLMAPIKey != "" {
 		apiKey = "<redacted>"
 	}
+	tempoToken := "<not set>"
+	if c.TempoToken != "" {
+		tempoToken = "<redacted>"
+	}
+	lokiToken := "<not set>"
+	if c.LokiToken != "" {
+		lokiToken = "<redacted>"
+	}
 	return fmt.Sprintf(
-		"PROM_URL=%s, PROM_TOKEN=%s, LLM_BASE_URL=%s, LLM_API_KEY=%s, LLM_MODEL=%s",
-		c.PromURL, promToken, c.LLMBaseURL, apiKey, c.LLMModel,
+		"PROM_URL=%s, PROM_TOKEN=%s, LLM_BASE_URL=%s, LLM_API_KEY=%s, LLM_MODEL=%s, TEMPO_URL=%s, TEMPO_TOKEN=%s, LOKI_URL=%s, LOKI_TOKEN=%s",
+		c.PromURL, promToken, c.LLMBaseURL, apiKey, c.LLMModel, c.TempoURL, tempoToken, c.LokiURL, lokiToken,
 	)
 }

@@ -207,6 +207,30 @@ diff ${DRIFT_E2E_DIR}/run1/drift-signal.json ${DRIFT_E2E_DIR}/run2/drift-signal.
     rm -rf "$DRIFT_E2E_DIR" "$DRIFT_NODRIFT_DIR"
 fi
 
+# ---- Multi-signal evidence checks ----
+if [ -f testdata/evidence_checkout_api_full.json ]; then
+    echo ""
+    echo "--- Multi-signal evidence ---"
+    check "Full evidence (metrics+traces+logs) validates" python3 -c "
+import json, sys
+sys.path.insert(0, 'analysis')
+from schemas.validate import validate
+with open('testdata/evidence_checkout_api_full.json') as f:
+    validate(json.load(f), 'evidence')
+"
+
+    check "Full evidence baseline includes trace indicators" python3 -c "
+import json, sys
+sys.path.insert(0, 'analysis')
+from baseline import compute_baseline
+with open('testdata/evidence_checkout_api_full.json') as f:
+    bl = compute_baseline(json.load(f))
+assert bl['indicators']['trace_latency']['available'], 'trace_latency not available'
+assert bl['indicators']['error_breakdown']['available'], 'error_breakdown not available'
+assert bl['indicators']['trace_latency']['top_dependency'] == 'payment-gateway'
+"
+fi
+
 # Summary
 echo ""
 echo "=== Component Matrix ==="
