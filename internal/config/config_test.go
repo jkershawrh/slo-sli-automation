@@ -34,6 +34,67 @@ func TestLoadAllVarsSet(t *testing.T) {
 	}
 }
 
+func TestLoadTempoAndLokiFromEnv(t *testing.T) {
+	// Tempo and Loki vars are always optional.
+	t.Setenv("LLM_BASE_URL", "http://llm:8080")
+	t.Setenv("LLM_API_KEY", "key")
+	t.Setenv("LLM_MODEL", "model")
+	t.Setenv("TEMPO_URL", "http://tempo:3200")
+	t.Setenv("TEMPO_TOKEN", "tempo-token")
+	t.Setenv("LOKI_URL", "http://loki:3100")
+	t.Setenv("LOKI_TOKEN", "loki-token")
+
+	cfg, err := Load(false)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if cfg.TempoURL != "http://tempo:3200" {
+		t.Errorf("TempoURL = %q, want %q", cfg.TempoURL, "http://tempo:3200")
+	}
+	if cfg.TempoToken != "tempo-token" {
+		t.Errorf("TempoToken not set correctly")
+	}
+	if cfg.LokiURL != "http://loki:3100" {
+		t.Errorf("LokiURL = %q, want %q", cfg.LokiURL, "http://loki:3100")
+	}
+	if cfg.LokiToken != "loki-token" {
+		t.Errorf("LokiToken not set correctly")
+	}
+
+	// Verify String() includes Tempo and Loki URLs but redacts tokens.
+	str := cfg.String()
+	if !strings.Contains(str, "http://tempo:3200") {
+		t.Error("String() should include TEMPO_URL")
+	}
+	if !strings.Contains(str, "http://loki:3100") {
+		t.Error("String() should include LOKI_URL")
+	}
+	if strings.Contains(str, "tempo-token") {
+		t.Error("String() should redact TEMPO_TOKEN")
+	}
+	if strings.Contains(str, "loki-token") {
+		t.Error("String() should redact LOKI_TOKEN")
+	}
+}
+
+func TestLoadTempoAndLokiOptional(t *testing.T) {
+	// Loading without Tempo/Loki vars should succeed.
+	t.Setenv("LLM_BASE_URL", "http://llm:8080")
+	t.Setenv("LLM_API_KEY", "key")
+	t.Setenv("LLM_MODEL", "model")
+
+	cfg, err := Load(false)
+	if err != nil {
+		t.Fatalf("expected no error without Tempo/Loki vars, got: %v", err)
+	}
+	if cfg.TempoURL != "" {
+		t.Errorf("TempoURL = %q, want empty", cfg.TempoURL)
+	}
+	if cfg.LokiURL != "" {
+		t.Errorf("LokiURL = %q, want empty", cfg.LokiURL)
+	}
+}
+
 func TestLoadMissingPromURLSucceeds(t *testing.T) {
 	// PROM_URL is not required at load time; the caller decides if it's needed.
 	t.Setenv("LLM_BASE_URL", "http://llm:8080")

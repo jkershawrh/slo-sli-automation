@@ -475,6 +475,29 @@ export default function App() {
                     <MetricCard label="stddev" value={baseline.indicators.throughput.stddev_rps.toFixed(2)} color="var(--text-dim)" />
                   </div>
 
+                  {/* Trace indicators (if available) */}
+                  {baseline.indicators.trace_latency?.available && (
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--rh-purple)', marginBottom: 8 }}>Trace Latency</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginBottom: 16 }}>
+                        <MetricCard label="service p99" value={`${baseline.indicators.trace_latency.service_p99_ms.toFixed(0)}ms`} color="var(--rh-purple)" />
+                        <MetricCard label={`top dep: ${baseline.indicators.trace_latency.top_dependency}`} value={`${baseline.indicators.trace_latency.top_dependency_p99_ms.toFixed(0)}ms`} color="var(--rh-purple)" />
+                        <MetricCard label="contribution" value={`${(baseline.indicators.trace_latency.top_dependency_contribution * 100).toFixed(0)}%`} color="var(--rh-purple)" />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Log error breakdown (if available) */}
+                  {baseline.indicators.error_breakdown?.available && (
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--rh-orange)', marginBottom: 8 }}>Error Breakdown</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, marginBottom: 16 }}>
+                        <MetricCard label={`top: ${baseline.indicators.error_breakdown.top_category.replace(/_/g, ' ')}`} value={`${(baseline.indicators.error_breakdown.top_category_ratio * 100).toFixed(1)}%`} color="var(--rh-orange)" />
+                        <MetricCard label="error categories" value={`${baseline.indicators.error_breakdown.categories}`} color="var(--rh-orange)" />
+                      </div>
+                    </div>
+                  )}
+
                   {/* Key reveal */}
                   <div style={{
                     padding: 14, borderRadius: 8, marginTop: 8,
