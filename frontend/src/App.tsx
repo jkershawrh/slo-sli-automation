@@ -567,9 +567,13 @@ export default function App() {
                       {/* 30-day avg → SLO (objective) → SLA (commitment) → Error Budget */}
                       {slo.headroom && (() => {
                         const obs = slo.headroom.observed_value;
-                        const fmtVal = (v: number) => slo.sli_type === 'availability'
-                          ? `${(v * 100).toFixed(2)}%`
-                          : `${Math.round(v)} ${slo.target_unit}`;
+                        const fmtVal = (v: number) => {
+                          if (slo.sli_type === 'availability') return `${(v * 100).toFixed(2)}%`;
+                          if (slo.sli_type === 'error_rate') return `${(v * 100).toFixed(2)}%`;
+                          if (Math.abs(v) < 1) return `${v.toFixed(4)} ${slo.target_unit}`;
+                          if (Math.abs(v) < 10) return `${v.toFixed(2)} ${slo.target_unit}`;
+                          return `${Math.round(v)} ${slo.target_unit}`;
+                        };
                         return (
                           <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
                             <div style={{ padding: '8px 14px', background: 'var(--surface-1)', borderRadius: 6, borderLeft: '3px solid var(--text-dim)' }}>
