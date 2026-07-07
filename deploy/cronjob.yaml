@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sloscope-artifacts
+  namespace: sloscope
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: sloscope-collector
+  namespace: sloscope
+spec:
+  schedule: "*/30 * * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: sloscope-reader
+          securityContext:
+            runAsNonRoot: true
+          containers:
+          - name: collector
+            image: quay.io/slo-sli-automation/sloscope:latest
+            imagePullPolicy: Always
+            command: ["/bin/sh", "-c"]
+            args:
+            - |
+              set -e
+              SERVICES="${SLOSCOPE_SERVICES:-triforce}"
+              for svc in $SERVICES; do
+                NS="${svc}"
+                echo "=== Collecting evidence for $svc/$NS ==="
+                /usr/local/bin/sloscope generate \
+                  --service "$svc" --namespace "$NS" \
+                  --lookback 30d --type service --maturity growing \
+                  --out "/artifacts/$svc" 2>&1 || echo "WARN: generate failed for $svc"
+
+                if [ -f "/artifacts/$svc/baseline.json" ]; then
+                  echo "=== Detecting drift for $svc ==="
+                  /usr/local/bin/sloscope drift \
+                    --service "$svc" \
+                    --baseline "/artifacts/$svc/baseline.json" \
+                    --window 1h --type service \
+                    --out "/artifacts/$svc" 2>&1 || echo "WARN: drift failed for $svc"
+                fi
+              done
+              echo "=== Collection complete ==="
+            env:
+            - name: SLOSCOPE_SERVICES
+              value: "triforce"
+            envFrom:
+            - secretRef:
+                name: sloscope-secrets
+            resources:
+              requests:
+                cpu: 200m
+                memory: 256Mi
+              limits:
+                cpu: "1"
+                memory: 512Mi
+            securityContext:
+              runAsNonRoot: true
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: [ALL]
+            volumeMounts:
+            - name: artifacts
+              mountPath: /artifacts
+          volumes:
+          - name: artifacts
+            persistentVolumeClaim:
+              claimName: sloscope-artifacts
+          restartPolicy: OnFailure
