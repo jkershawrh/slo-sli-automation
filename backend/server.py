@@ -28,7 +28,20 @@ from baseline import compute_baseline
 from schemas.validate import validate, is_valid
 from serialize import serialize
 
-app = FastAPI(title="sloscope API", version="0.1.0")
+tags_metadata = [
+    {"name": "System", "description": "Health and status"},
+    {"name": "SLO Generation", "description": "Evidence collection, baseline computation, SLO proposal, artifact rendering"},
+    {"name": "Drift Detection", "description": "Drift signal computation and classification with remediation"},
+    {"name": "Fixtures", "description": "Pre-built sample data for demo and testing"},
+    {"name": "Dashboard", "description": "Multi-service dashboard APIs backed by the artifact store"},
+]
+
+app = FastAPI(
+    title="sloscope API",
+    version="0.1.0",
+    description="Evidence-based SLO/SLI generator and drift detector. Two-stage architecture: deterministic baseline from telemetry, then LLM-powered proposals and drift classification.",
+    openapi_tags=tags_metadata,
+)
 
 
 def get_cors_origins():
@@ -114,12 +127,12 @@ def load_fixture(path):
 
 # --- Endpoints ---
 
-@app.get("/health")
+@app.get("/health", tags=["System"], summary="Health check")
 def health():
     return {"status": "ok", "version": "0.1.0"}
 
 
-@app.post("/api/v1/evidence")
+@app.post("/api/v1/evidence", tags=["SLO Generation"], summary="Collect evidence")
 def collect_evidence(req: EvidenceRequest):
     """Load demo fixture evidence and patch service/namespace for the request."""
     fixture_key = req.fixture or req.service
@@ -134,8 +147,9 @@ def collect_evidence(req: EvidenceRequest):
     return evidence
 
 
-@app.post("/api/v1/baseline")
+@app.post("/api/v1/baseline", tags=["SLO Generation"], summary="Compute baseline")
 def compute_baseline_endpoint(req: BaselineRequest):
+    """Compute a deterministic empirical baseline from evidence."""
     try:
         result = compute_baseline(req.evidence)
         return result
@@ -143,8 +157,9 @@ def compute_baseline_endpoint(req: BaselineRequest):
         raise HTTPException(400, str(e))
 
 
-@app.post("/api/v1/propose")
+@app.post("/api/v1/propose", tags=["SLO Generation"], summary="Propose SLOs")
 def propose_slos(req: ProposeRequest):
+    """Generate SLO/SLA proposals grounded in the baseline. Falls back to recorded responses when LLM is not configured."""
     # Check if LLM is configured
     llm_base = os.environ.get("LLM_BASE_URL", "")
     llm_key = os.environ.get("LLM_API_KEY", "")
@@ -174,8 +189,9 @@ def propose_slos(req: ProposeRequest):
         raise HTTPException(500, f"Proposal failed: {e}")
 
 
-@app.post("/api/v1/drift/signal")
+@app.post("/api/v1/drift/signal", tags=["Drift Detection"], summary="Compute drift signal")
 def compute_drift_signal_endpoint(req: DriftSignalRequest):
+    """Compute deterministic deviation between baseline and live evidence."""
     try:
         from deviation import compute_drift_signal
         combined = {
@@ -188,8 +204,9 @@ def compute_drift_signal_endpoint(req: DriftSignalRequest):
         raise HTTPException(400, f"Drift signal computation failed: {e}")
 
 
-@app.post("/api/v1/drift/classify")
+@app.post("/api/v1/drift/classify", tags=["Drift Detection"], summary="Classify drift")
 def classify_drift(req: DriftClassifyRequest):
+    """Classify drift and generate remediation recommendations. Falls back to recorded responses when LLM is not configured."""
     llm_base = os.environ.get("LLM_BASE_URL", "")
     llm_key = os.environ.get("LLM_API_KEY", "")
 
@@ -210,7 +227,7 @@ def classify_drift(req: DriftClassifyRequest):
         raise HTTPException(500, f"Classification failed: {e}")
 
 
-@app.post("/api/v1/render")
+@app.post("/api/v1/render", tags=["SLO Generation"], summary="Render artifacts")
 def render_artifacts(req: RenderRequest):
     """Render OpenSLO YAML, Prometheus rules, and audit bundle from a proposal."""
     proposal = req.proposal
@@ -368,7 +385,7 @@ def render_prom_rules(proposal, service, namespace="payments"):
 
 # --- Available fixtures listing ---
 
-@app.get("/api/v1/fixtures")
+@app.get("/api/v1/fixtures", tags=["Fixtures"], summary="List fixtures")
 def list_fixtures():
     """List available sample services and drift scenarios."""
     drift_scenarios = []
@@ -383,7 +400,7 @@ def list_fixtures():
     }
 
 
-@app.get("/api/v1/fixtures/drift/{scenario}")
+@app.get("/api/v1/fixtures/drift/{scenario}", tags=["Fixtures"], summary="Get drift fixture")
 def get_drift_fixture(scenario: str):
     """Load a specific drift scenario fixture."""
     path = DRIFT_FIXTURES_DIR / f"{scenario}.json"
@@ -392,13 +409,94 @@ def get_drift_fixture(scenario: str):
     return load_fixture(path)
 
 
-@app.get("/api/v1/fixtures/baseline/{service}")
+@app.get("/api/v1/fixtures/baseline/{service}", tags=["Fixtures"], summary="Get baseline fixture")
 def get_baseline_fixture(service: str):
     """Load a pre-computed baseline fixture for a sample service."""
     path = BASELINE_FIXTURES.get(service)
     if not path or not path.exists():
         raise HTTPException(404, f"Baseline fixture for '{service}' not found")
     return load_fixture(path)
+
+
+# --- Artifact store + v2 dashboard API ---
+
+from store import ArtifactStore
+
+store = ArtifactStore()
+
+# Seed demo data on startup if store is empty
+if not store.list_services():
+    from store import seed_demo_data
+    seed_demo_data(store)
+
+
+@app.get("/api/v2/summary", tags=["Dashboard"], summary="Aggregate status")
+def get_summary():
+    """Cross-service summary: total, healthy, degraded, critical counts."""
+    return store.get_summary()
+
+
+@app.get("/api/v2/services", tags=["Dashboard"], summary="List services")
+def list_services():
+    """All tracked services with current status."""
+    return store.get_summary()["services"]
+
+
+@app.get("/api/v2/services/{service}/baseline", tags=["Dashboard"], summary="Service baseline")
+def get_service_baseline(service: str):
+    """Most recent baseline for a service."""
+    data = store.load(service, "baseline")
+    if not data:
+        raise HTTPException(404, f"No baseline for '{service}'")
+    return data
+
+
+@app.get("/api/v2/services/{service}/proposal", tags=["Dashboard"], summary="Service proposal")
+def get_service_proposal(service: str):
+    """Active SLO/SLA proposal for a service."""
+    data = store.load(service, "proposal")
+    if not data:
+        raise HTTPException(404, f"No proposal for '{service}'")
+    return data
+
+
+@app.get("/api/v2/services/{service}/drift", tags=["Dashboard"], summary="Latest drift signal")
+def get_service_drift(service: str):
+    """Most recent drift signal for a service."""
+    data = store.load(service, "drift-signal")
+    if not data:
+        raise HTTPException(404, f"No drift signal for '{service}'")
+    return data
+
+
+@app.get("/api/v2/services/{service}/drift/report", tags=["Dashboard"], summary="Latest drift report")
+def get_service_drift_report(service: str):
+    """Most recent drift classification and remediation."""
+    data = store.load(service, "drift-report")
+    if not data:
+        raise HTTPException(404, f"No drift report for '{service}'")
+    return data
+
+
+@app.get("/api/v2/services/{service}/drift/history", tags=["Dashboard"], summary="Drift history")
+def get_service_drift_history(service: str, limit: int = 10):
+    """Historical drift signals, most recent first."""
+    return store.load_history(service, "drift-signal", limit)
+
+
+@app.get("/api/v2/services/{service}/budget", tags=["Dashboard"], summary="Error budget status")
+def get_service_budget(service: str):
+    """Error budget status per SLO."""
+    data = store.get_error_budget(service)
+    if not data:
+        raise HTTPException(404, f"No proposal for '{service}'")
+    return data
+
+
+@app.get("/api/v2/services/{service}/recommendations", tags=["Dashboard"], summary="Open recommendations")
+def get_service_recommendations(service: str):
+    """Active remediation recommendations from the latest drift report."""
+    return store.get_recommendations(service)
 
 
 # --- Static file serving (production: serve built frontend) ---
