@@ -28,7 +28,7 @@ def load_recorded_response(name):
 
 def run_eval_suite():
     """Run the full eval suite and return the grid."""
-    fixtures = ["web_api_baseline", "high_traffic_baseline", "batch_processor_baseline"]
+    fixtures = ["web_api_baseline", "high_traffic_baseline", "batch_processor_baseline", "web_api_baseline_full"]
     grid = {}
 
     for fixture_name in fixtures:

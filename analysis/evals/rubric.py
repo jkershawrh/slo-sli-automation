@@ -47,6 +47,9 @@ def evaluate_proposal(proposal, baseline):
     # Scored: Direction validity
     results["scored_dimensions"]["direction_validity"] = check_direction_validity(proposal)
 
+    # Scored: Trace/log citation
+    results["scored_dimensions"]["trace_log_citation"] = check_trace_log_citation(proposal, baseline)
+
     # Overall pass: all hard gates green AND all scored green
     all_hard = all(results["hard_gates"].values())
     all_scored = all(results["scored_dimensions"].values())
@@ -153,6 +156,30 @@ def check_rationale_quality(proposal, baseline):
 
         if not has_number:
             return False
+
+    return True
+
+
+def check_trace_log_citation(proposal, baseline):
+    """Scored dimension: when trace/log indicators are available, rationale should cite them."""
+    has_traces = baseline.get("indicators", {}).get("trace_latency", {}).get("available", False)
+    has_logs = baseline.get("indicators", {}).get("error_breakdown", {}).get("available", False)
+
+    if not has_traces and not has_logs:
+        return True  # No trace/log data to cite
+
+    for slo in proposal.get("slos", []):
+        rationale = slo.get("rationale", "").lower()
+        if has_traces and slo.get("sli_type") == "latency":
+            # Latency SLO should mention the dependency
+            top_dep = baseline["indicators"]["trace_latency"].get("top_dependency", "").lower()
+            if top_dep and top_dep not in rationale:
+                return False
+        if has_logs and slo.get("sli_type") in ("error_rate", "availability"):
+            # Error/availability SLO should mention the error category
+            top_cat = baseline["indicators"]["error_breakdown"].get("top_category", "").lower()
+            if top_cat and top_cat.replace("_", " ") not in rationale and top_cat not in rationale:
+                return False
 
     return True
 

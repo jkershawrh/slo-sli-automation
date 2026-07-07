@@ -191,6 +191,34 @@ def compute_baseline(evidence):
             "available": True,
         }
 
+    # Add trace-derived indicators if available
+    traces = series.get("traces", {})
+    if traces.get("available", False):
+        top_deps = traces.get("top_dependencies", [])
+        top_dep = max(top_deps, key=lambda d: d["p99_ms"]) if top_deps else None
+        service_p99 = traces.get("span_latency_p99_ms", 0)
+
+        baseline["indicators"]["trace_latency"] = {
+            "service_p99_ms": service_p99,
+            "top_dependency": top_dep["service"] if top_dep else "unknown",
+            "top_dependency_p99_ms": top_dep["p99_ms"] if top_dep else 0,
+            "top_dependency_contribution": (top_dep["p99_ms"] / service_p99) if top_dep and service_p99 > 0 else 0,
+            "available": True,
+        }
+
+    # Add log-derived indicators if available
+    logs = series.get("logs", {})
+    if logs.get("available", False):
+        breakdown = logs.get("error_breakdown", [])
+        top_cat = max(breakdown, key=lambda c: c["ratio"]) if breakdown else None
+
+        baseline["indicators"]["error_breakdown"] = {
+            "top_category": top_cat["category"] if top_cat else "unknown",
+            "top_category_ratio": top_cat["ratio"] if top_cat else 0,
+            "categories": len(breakdown),
+            "available": True,
+        }
+
     validate(baseline, "baseline")
     return baseline
 

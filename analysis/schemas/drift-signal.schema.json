@@ -33,6 +33,7 @@
               "error_rate_elevation", "error_rate_reduction",
               "throughput_collapse", "throughput_surge",
               "saturation_approach", "availability_drop",
+              "dependency_latency_regression", "error_category_shift",
               "distribution_shift", "no_significant_drift"
             ]
           },
@@ -53,6 +54,7 @@
             "error_rate_elevation", "error_rate_reduction",
             "throughput_collapse", "throughput_surge",
             "saturation_approach", "availability_drop",
+            "dependency_latency_regression", "error_category_shift",
             "distribution_shift", "no_significant_drift"
           ]
         },

@@ -1,0 +1,124 @@
+{
+  "schema_version": 2,
+  "service": "checkout-api",
+  "namespace": "payments",
+  "lookback_window": "30d",
+  "collected_at": "2026-07-05T12:00:00Z",
+  "coverage_ratio": 0.97,
+  "series": {
+    "latency_histogram": {
+      "metric_name": "http_request_duration_seconds_bucket",
+      "buckets": [
+        { "le": 0.005, "count": 100 },
+        { "le": 0.01, "count": 500 },
+        { "le": 0.025, "count": 2000 },
+        { "le": 0.05, "count": 5000 },
+        { "le": 0.1, "count": 15000 },
+        { "le": 0.25, "count": 40000 },
+        { "le": 0.5, "count": 70000 },
+        { "le": 1.0, "count": 85000 },
+        { "le": 2.5, "count": 95000 },
+        { "le": 5.0, "count": 99000 },
+        { "le": 10.0, "count": 99800 },
+        { "le": "+Inf", "count": 100000 }
+      ],
+      "total_count": 100000,
+      "sum": 42000.0
+    },
+    "request_total": {
+      "metric_name": "http_requests_total",
+      "total": 100000,
+      "rate_samples": [
+        { "timestamp": "2026-06-05T12:00:00Z", "value": 3.1 },
+        { "timestamp": "2026-06-06T12:00:00Z", "value": 3.4 },
+        { "timestamp": "2026-06-07T12:00:00Z", "value": 2.8 },
+        { "timestamp": "2026-06-08T12:00:00Z", "value": 3.6 },
+        { "timestamp": "2026-06-09T12:00:00Z", "value": 3.2 },
+        { "timestamp": "2026-06-10T12:00:00Z", "value": 4.1 },
+        { "timestamp": "2026-06-11T12:00:00Z", "value": 2.9 },
+        { "timestamp": "2026-06-12T12:00:00Z", "value": 3.5 },
+        { "timestamp": "2026-06-13T12:00:00Z", "value": 3.3 },
+        { "timestamp": "2026-06-14T12:00:00Z", "value": 3.0 },
+        { "timestamp": "2026-06-15T12:00:00Z", "value": 3.7 },
+        { "timestamp": "2026-06-16T12:00:00Z", "value": 2.7 },
+        { "timestamp": "2026-06-17T12:00:00Z", "value": 3.8 },
+        { "timestamp": "2026-06-18T12:00:00Z", "value": 3.1 },
+        { "timestamp": "2026-06-19T12:00:00Z", "value": 3.4 },
+        { "timestamp": "2026-06-20T12:00:00Z", "value": 4.5 },
+        { "timestamp": "2026-06-21T12:00:00Z", "value": 2.6 },
+        { "timestamp": "2026-06-22T12:00:00Z", "value": 3.9 },
+        { "timestamp": "2026-06-23T12:00:00Z", "value": 3.2 },
+        { "timestamp": "2026-06-24T12:00:00Z", "value": 3.5 },
+        { "timestamp": "2026-06-25T12:00:00Z", "value": 3.0 },
+        { "timestamp": "2026-06-26T12:00:00Z", "value": 3.3 },
+        { "timestamp": "2026-06-27T12:00:00Z", "value": 4.2 },
+        { "timestamp": "2026-06-28T12:00:00Z", "value": 2.8 },
+        { "timestamp": "2026-06-29T12:00:00Z", "value": 3.6 },
+        { "timestamp": "2026-06-30T12:00:00Z", "value": 3.1 },
+        { "timestamp": "2026-07-01T12:00:00Z", "value": 3.4 },
+        { "timestamp": "2026-07-02T12:00:00Z", "value": 3.7 },
+        { "timestamp": "2026-07-03T12:00:00Z", "value": 3.0 },
+        { "timestamp": "2026-07-04T12:00:00Z", "value": 3.3 }
+      ]
+    },
+    "error_total": {
+      "metric_name": "http_requests_errors_total",
+      "total": 230
+    },
+    "saturation": {
+      "cpu": {
+        "metric_name": "container_cpu_usage_ratio",
+        "samples": [0.32, 0.35, 0.41, 0.38, 0.29, 0.72, 0.45, 0.33, 0.36, 0.40]
+      },
+      "memory": {
+        "metric_name": "container_memory_usage_ratio",
+        "samples": [0.58, 0.61, 0.63, 0.59, 0.65, 0.78, 0.62, 0.60, 0.64, 0.61]
+      },
+      "available": true
+    },
+    "traces": {
+      "available": true,
+      "source": "tempo",
+      "total_spans": 450000,
+      "service_spans": 120000,
+      "span_latency_p99_ms": 480.0,
+      "span_latency_p50_ms": 95.0,
+      "top_dependencies": [
+        { "service": "payment-gateway", "p99_ms": 320.0, "call_count": 80000, "error_rate": 0.001 },
+        { "service": "inventory-db", "p99_ms": 45.0, "call_count": 120000, "error_rate": 0.0 },
+        { "service": "auth-service", "p99_ms": 12.0, "call_count": 60000, "error_rate": 0.0005 }
+      ],
+      "slow_span_pattern": "payment-gateway accounts for 67% of p99 tail latency"
+    },
+    "logs": {
+      "available": true,
+      "source": "loki",
+      "total_entries": 250000,
+      "error_entries": 580,
+      "error_breakdown": [
+        { "category": "connection_timeout", "count": 340, "ratio": 0.5862 },
+        { "category": "validation_error", "count": 150, "ratio": 0.2586 },
+        { "category": "auth_failure", "count": 90, "ratio": 0.1552 }
+      ],
+      "error_rate_by_category": {
+        "connection_timeout": 0.00136,
+        "validation_error": 0.0006,
+        "auth_failure": 0.00036
+      }
+    }
+  },
+  "provenance": {
+    "prometheus_endpoint": "https://thanos-querier.openshift-monitoring.svc:9091",
+    "query_timestamps": {
+      "start": "2026-06-05T12:00:00Z",
+      "end": "2026-07-05T12:00:00Z"
+    },
+    "queries": {
+      "latency": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{service=\"checkout-api\",namespace=\"payments\"}[5m])) by (le))",
+      "request_total": "sum(increase(http_requests_total{service=\"checkout-api\",namespace=\"payments\"}[30d]))",
+      "error_total": "sum(increase(http_requests_errors_total{service=\"checkout-api\",namespace=\"payments\"}[30d]))",
+      "cpu_usage": "avg(container_cpu_usage_ratio{pod=~\"checkout-api.*\",namespace=\"payments\"})",
+      "memory_usage": "avg(container_memory_usage_ratio{pod=~\"checkout-api.*\",namespace=\"payments\"})"
+    }
+  }
+}

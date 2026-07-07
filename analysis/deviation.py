@@ -101,7 +101,11 @@ def classify_indicator(name, direction, band_breach):
         return "no_significant_drift"
 
     # Map indicator name patterns to drift classes
-    if "latency" in name:
+    if "dependency" in name:
+        return "dependency_latency_regression" if direction == "increasing" else "no_significant_drift"
+    elif "category" in name or "breakdown" in name:
+        return "error_category_shift" if band_breach else "no_significant_drift"
+    elif "latency" in name:
         return "latency_regression" if direction == "increasing" else "latency_improvement"
     elif "error" in name:
         return "error_rate_elevation" if direction == "increasing" else "error_rate_reduction"
@@ -272,6 +276,65 @@ def compute_drift_signal(combined_input):
                     "status": "skipped",
                     "skip_reason": "saturation data not available in live sample",
                 })
+
+    # Trace-derived indicators (if both baseline and live have trace data)
+    trace_baseline = baseline.get("indicators", {}).get("trace_latency", {})
+    if trace_baseline.get("available", False):
+        trace_live = live_baseline.get("indicators", {}).get("trace_latency", {})
+        if trace_live and trace_live.get("available", False):
+            # Top dependency p99 comparison
+            live_dep_p99 = trace_live.get("top_dependency_p99_ms", 0)
+            base_dep_p99 = trace_baseline.get("top_dependency_p99_ms", 0)
+            # Use 20% of baseline as default stddev for trace indicators
+            trace_stddev = base_dep_p99 * 0.2 if base_dep_p99 > 0 else 10.0
+
+            dev = compute_deviation(live_dep_p99, base_dep_p99, trace_stddev, "ms")
+            drift_class = "dependency_latency_regression" if dev["band_breach"] and dev["direction"] == "increasing" else "no_significant_drift"
+
+            ind = {
+                "name": "dependency_p99_ms",
+                "live_value": live_dep_p99,
+                "baseline_value": base_dep_p99,
+                "abs_deviation": dev["abs_deviation"],
+                "rel_deviation": dev["rel_deviation"],
+                "direction": dev["direction"],
+                "band_upper": dev["band_upper"],
+                "band_lower": dev["band_lower"],
+                "band_breach": dev["band_breach"],
+                "first_pass_class": drift_class,
+            }
+            indicators.append(ind)
+            if dev["band_breach"]:
+                breached.append(("dependency_p99_ms", drift_class, dev["breach_magnitude"]))
+
+    # Log-derived indicators (if both baseline and live have log data)
+    log_baseline = baseline.get("indicators", {}).get("error_breakdown", {})
+    if log_baseline.get("available", False):
+        log_live = live_baseline.get("indicators", {}).get("error_breakdown", {})
+        if log_live and log_live.get("available", False):
+            live_ratio = log_live.get("top_category_ratio", 0)
+            base_ratio = log_baseline.get("top_category_ratio", 0)
+            # Use 10% of baseline ratio as stddev
+            log_stddev = base_ratio * 0.1 if base_ratio > 0 else 0.05
+
+            dev = compute_deviation(live_ratio, base_ratio, log_stddev, "ratio")
+            drift_class = "error_category_shift" if dev["band_breach"] else "no_significant_drift"
+
+            ind = {
+                "name": "error_top_category_ratio",
+                "live_value": live_ratio,
+                "baseline_value": base_ratio,
+                "abs_deviation": dev["abs_deviation"],
+                "rel_deviation": dev["rel_deviation"],
+                "direction": dev["direction"],
+                "band_upper": dev["band_upper"],
+                "band_lower": dev["band_lower"],
+                "band_breach": dev["band_breach"],
+                "first_pass_class": drift_class,
+            }
+            indicators.append(ind)
+            if dev["band_breach"]:
+                breached.append(("error_top_category_ratio", drift_class, dev["breach_magnitude"]))
 
     # Determine dominant signal
     if breached:

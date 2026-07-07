@@ -15,6 +15,7 @@ from evals.rubric import (
     check_grounding,
     check_indicator_appropriateness,
     check_rationale_quality,
+    check_trace_log_citation,
     evaluate_proposal,
     extract_baseline_values,
 )
@@ -33,7 +34,7 @@ from propose import propose
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "evals" / "fixtures"
 RECORDED_DIR = Path(__file__).resolve().parent.parent / "evals" / "recorded"
-FIXTURE_NAMES = ["web_api_baseline", "high_traffic_baseline", "batch_processor_baseline"]
+FIXTURE_NAMES = ["web_api_baseline", "high_traffic_baseline", "batch_processor_baseline", "web_api_baseline_full"]
 
 
 def _load_baseline(name):
@@ -527,3 +528,58 @@ class TestNewConsistencyChecks:
             if slo["sli_type"] == "availability":
                 slo["target_op"] = "lte"  # wrong: availability should be gte
         assert check_direction_validity(proposal) is False
+
+
+# ---------------------------------------------------------------------------
+# Test: Trace/Log Citation
+# ---------------------------------------------------------------------------
+
+
+class TestTraceLogCitation:
+    """Test the trace_log_citation scored dimension."""
+
+    def test_citation_passes_when_traces_cited(self):
+        """Rationale mentioning the top dependency passes."""
+        baseline = _load_baseline("web_api_baseline_full")
+        proposal = _load_response("web_api_baseline_full")
+        assert check_trace_log_citation(proposal, baseline) is True
+
+    def test_citation_fails_when_traces_not_cited(self):
+        """Latency rationale without dependency mention fails when traces available."""
+        baseline = _load_baseline("web_api_baseline_full")
+        proposal = copy.deepcopy(_load_response("web_api_baseline_full"))
+        for slo in proposal["slos"]:
+            if slo["sli_type"] == "latency":
+                # Replace rationale with one that does NOT mention payment-gateway
+                slo["rationale"] = (
+                    "The observed p99 latency is 500.0ms with a stddev of 95.0ms. "
+                    "Setting the target at 595ms provides 1 stddev of headroom."
+                )
+        assert check_trace_log_citation(proposal, baseline) is False
+
+    def test_citation_fails_when_error_category_not_cited(self):
+        """Availability rationale without error category mention fails when logs available."""
+        baseline = _load_baseline("web_api_baseline_full")
+        proposal = copy.deepcopy(_load_response("web_api_baseline_full"))
+        for slo in proposal["slos"]:
+            if slo["sli_type"] == "availability":
+                # Replace rationale with one that does NOT mention connection_timeout
+                slo["rationale"] = (
+                    "The observed availability is 0.998 based on 1000 errors out of "
+                    "500000 total requests. Setting the target at 0.9968."
+                )
+        assert check_trace_log_citation(proposal, baseline) is False
+
+    def test_citation_passes_when_no_traces_available(self):
+        """No trace data means citation check passes automatically."""
+        baseline = _load_baseline("web_api_baseline")  # no trace/log indicators
+        proposal = _load_response("web_api_baseline")
+        assert check_trace_log_citation(proposal, baseline) is True
+
+    def test_citation_passes_when_trace_not_available_flag(self):
+        """Trace data with available=false means citation check passes."""
+        baseline = copy.deepcopy(_load_baseline("web_api_baseline_full"))
+        baseline["indicators"]["trace_latency"]["available"] = False
+        baseline["indicators"]["error_breakdown"]["available"] = False
+        proposal = _load_response("web_api_baseline")  # no citations needed
+        assert check_trace_log_citation(proposal, baseline) is True

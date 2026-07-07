@@ -98,6 +98,17 @@ the band width while error_rate remained within tolerance, indicating a tail-lat
 issue isolated from request handling correctness"
    - Reference both live and baseline values with their specific numbers
 
+TRACE AND LOG CONTEXT (when available in drift signals):
+If drift signals include dependency_p99_ms indicator:
+- Use it to pinpoint whether latency regression is caused by a specific dependency
+- Example: "dependency_p99_ms breached (640ms vs 320ms baseline) while service p50 is stable — this is a dependency-isolated regression, not a systemic issue. Investigate payment-gateway specifically."
+
+If drift signals include error_top_category_ratio indicator:
+- Use it to identify whether the error pattern has shifted
+- Example: "connection_timeout ratio jumped from 58.6% to 85% of all errors — this suggests a network or upstream service issue, not application logic. Check connection pools and upstream health."
+
+These signals enable more precise root-cause analysis than aggregate metrics alone.
+
 REMEDIATION PLAN RULES (for negative drift):
 For regression, elevation, collapse, saturation_approach, and availability_drop:
 Each recommendation SHOULD include a remediation_plan with:

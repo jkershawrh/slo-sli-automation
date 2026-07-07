@@ -417,6 +417,80 @@ class TestInvalidEvidence:
             compute_baseline({})
 
 
+class TestTraceLogBaseline:
+    """TDD tests for trace and log indicator computation."""
+
+    @pytest.fixture
+    def full_evidence(self):
+        with open(TESTDATA_DIR / "evidence_checkout_api_full.json") as f:
+            return json.load(f)
+
+    @pytest.fixture
+    def full_baseline(self, full_evidence):
+        return compute_baseline(full_evidence)
+
+    def test_trace_latency_available(self, full_baseline):
+        assert full_baseline["indicators"]["trace_latency"]["available"] is True
+
+    def test_trace_service_p99(self, full_baseline):
+        assert full_baseline["indicators"]["trace_latency"]["service_p99_ms"] == 480.0
+
+    def test_trace_top_dependency(self, full_baseline):
+        assert full_baseline["indicators"]["trace_latency"]["top_dependency"] == "payment-gateway"
+
+    def test_trace_top_dependency_p99(self, full_baseline):
+        assert full_baseline["indicators"]["trace_latency"]["top_dependency_p99_ms"] == 320.0
+
+    def test_trace_top_dependency_contribution(self, full_baseline):
+        # payment-gateway p99 (320) / service p99 (480) = 0.6667
+        assert full_baseline["indicators"]["trace_latency"]["top_dependency_contribution"] == pytest.approx(320.0 / 480.0, rel=1e-3)
+
+    def test_error_breakdown_available(self, full_baseline):
+        assert full_baseline["indicators"]["error_breakdown"]["available"] is True
+
+    def test_error_top_category(self, full_baseline):
+        assert full_baseline["indicators"]["error_breakdown"]["top_category"] == "connection_timeout"
+
+    def test_error_top_category_ratio(self, full_baseline):
+        assert full_baseline["indicators"]["error_breakdown"]["top_category_ratio"] == pytest.approx(0.5862, rel=1e-3)
+
+    def test_error_categories_count(self, full_baseline):
+        assert full_baseline["indicators"]["error_breakdown"]["categories"] == 3
+
+    def test_no_traces_produces_no_trace_indicator(self):
+        """Existing evidence without traces should not produce trace_latency."""
+        with open(TESTDATA_DIR / "evidence_checkout_api.json") as f:
+            evidence = json.load(f)
+        baseline = compute_baseline(evidence)
+        assert "trace_latency" not in baseline["indicators"]
+
+    def test_no_logs_produces_no_error_breakdown(self):
+        """Existing evidence without logs should not produce error_breakdown."""
+        with open(TESTDATA_DIR / "evidence_checkout_api.json") as f:
+            evidence = json.load(f)
+        baseline = compute_baseline(evidence)
+        assert "error_breakdown" not in baseline["indicators"]
+
+    def test_full_baseline_validates_schema(self, full_baseline):
+        validate(full_baseline, "baseline")
+
+    def test_full_baseline_is_deterministic(self, full_evidence):
+        b1 = compute_baseline(full_evidence)
+        b2 = compute_baseline(full_evidence)
+        assert serialize(b1) == serialize(b2)
+
+    def test_existing_metrics_unchanged(self, full_baseline):
+        """Full evidence with traces/logs should produce identical metric indicators."""
+        with open(TESTDATA_DIR / "evidence_checkout_api.json") as f:
+            metrics_only = json.load(f)
+        metrics_baseline = compute_baseline(metrics_only)
+        # Metric indicators should be identical
+        assert full_baseline["indicators"]["latency"] == metrics_baseline["indicators"]["latency"]
+        assert full_baseline["indicators"]["error_rate"] == metrics_baseline["indicators"]["error_rate"]
+        assert full_baseline["indicators"]["availability"] == metrics_baseline["indicators"]["availability"]
+        assert full_baseline["indicators"]["throughput"] == metrics_baseline["indicators"]["throughput"]
+
+
 class TestSerializeCanonical:
     """Tests for the canonical serializer."""
 
