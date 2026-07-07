@@ -906,9 +906,9 @@ export default function App() {
                     For infrastructure teams
                   </div>
                   <div style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-                    Know when a Xeon 6 node is approaching saturation before inference latency triples.
+                    Know when a node is approaching saturation before inference latency triples.
                     Set CPU and memory SLOs grounded in observed utilization, not guesswork.
-                    When you consolidate from GPU to CPU-only, sloscope tells you if the service is still meeting its commitments.
+                    When you consolidate or migrate infrastructure, sloscope tells you if the service is still meeting its commitments.
                   </div>
                 </div>
 
@@ -927,7 +927,7 @@ export default function App() {
                 {/* For demos/events */}
                 <div style={{ padding: 16, background: 'var(--surface-1)', borderRadius: 8, borderLeft: '4px solid var(--rh-orange)' }}>
                   <div style={{ fontSize: 11, fontFamily: "'Red Hat Mono', monospace", color: 'var(--rh-orange)', letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 6 }}>
-                    For Summit Connect
+                    For live events
                   </div>
                   <div style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
                     Run drift detection before every event. Know if your demo service has degraded since the last baseline.
