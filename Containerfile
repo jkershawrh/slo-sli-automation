@@ -1,9 +1,17 @@
-# Stage 1: Build frontend
+# Stage 1a: Build demo frontend
 FROM node:20-slim AS frontend-build
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci --legacy-peer-deps 2>/dev/null || npm install
 COPY frontend/ ./
+RUN npm run build
+
+# Stage 1b: Build dashboard frontend
+FROM node:20-slim AS dashboard-build
+WORKDIR /build
+COPY dashboard/package.json dashboard/package-lock.json* ./
+RUN npm ci --legacy-peer-deps 2>/dev/null || npm install
+COPY dashboard/ ./
 RUN npm run build
 
 # Stage 2: Python backend + built frontend + Go CLI
@@ -35,8 +43,9 @@ COPY backend/ ./backend/
 # Test data and fixtures
 COPY testdata/ ./testdata/
 
-# Built frontend
+# Built frontends
 COPY --from=frontend-build /build/dist ./frontend/dist/
+COPY --from=dashboard-build /build/dist ./dashboard/dist/
 
 # Verification scripts
 COPY scripts/ ./scripts/

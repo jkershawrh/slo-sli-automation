@@ -500,14 +500,30 @@ def get_service_recommendations(service: str):
     return store.get_recommendations(service)
 
 
-# --- Static file serving (production: serve built frontend) ---
+# --- Static file serving (production: serve built frontends) ---
 
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
+DASHBOARD_DIST = PROJECT_ROOT / "dashboard" / "dist"
 
-if FRONTEND_DIST.exists():
+if FRONTEND_DIST.exists() or DASHBOARD_DIST.exists():
     from fastapi.staticfiles import StaticFiles
     from fastapi.responses import FileResponse
 
+# Dashboard at /dashboard/
+if DASHBOARD_DIST.exists():
+    @app.get("/dashboard")
+    def serve_dashboard_redirect():
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse("/dashboard/")
+
+    @app.get("/dashboard/")
+    def serve_dashboard_index():
+        return FileResponse(DASHBOARD_DIST / "index.html")
+
+    app.mount("/dashboard", StaticFiles(directory=str(DASHBOARD_DIST), html=True), name="dashboard")
+
+# Demo frontend at /
+if FRONTEND_DIST.exists():
     @app.get("/")
     def serve_index():
         return FileResponse(FRONTEND_DIST / "index.html")
