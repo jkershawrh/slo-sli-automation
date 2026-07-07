@@ -404,6 +404,24 @@ func TestCollectEvidence_AssemblesBundle(t *testing.T) {
 	}
 }
 
+func TestCollectEvidence_RejectsInvalidServiceName(t *testing.T) {
+	c := NewClient(ClientConfig{BaseURL: "http://example.test", Timeout: 5 * time.Second})
+	_, err := c.CollectEvidence(context.Background(), `bad"service`, "production", time.Hour)
+	if err == nil {
+		t.Fatal("expected invalid service name to be rejected")
+	}
+}
+
+func TestBuildQueries_EscapesAndScopesSelectors(t *testing.T) {
+	q := buildQueries("checkout-api", "payments")
+	if !strings.Contains(q.requestTotal, `service="checkout-api",namespace="payments"`) {
+		t.Errorf("requestTotal query missing scoped labels: %s", q.requestTotal)
+	}
+	if !strings.Contains(q.cpuUtilization, `pod=~"checkout-api-.*"`) {
+		t.Errorf("cpu query missing escaped pod regex: %s", q.cpuUtilization)
+	}
+}
+
 // ---------- Test: QueryRange sends correct query parameters ----------
 
 func TestQueryRange_SendsCorrectParams(t *testing.T) {

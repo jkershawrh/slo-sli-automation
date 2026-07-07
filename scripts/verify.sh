@@ -6,6 +6,9 @@ cd "$(dirname "$0")/.."
 PASS=0
 FAIL=0
 TOTAL=0
+VERIFY_ROOT="out/verify-$(date +%Y%m%d%H%M%S)-$$"
+mkdir -p "$VERIFY_ROOT"
+trap 'rm -rf "$VERIFY_ROOT"' EXIT
 
 check() {
     local name="$1"
@@ -70,7 +73,8 @@ echo ""
 
 # 4. End-to-end: generate against fixtures (dry-run)
 echo "--- End-to-end ---"
-E2E_DIR=$(mktemp -d)
+E2E_DIR="$VERIFY_ROOT/generate"
+mkdir -p "$E2E_DIR"
 check "Generate dry-run (evidence -> baseline)" \
     ./bin/sloscope generate \
         --service checkout-api \
@@ -83,35 +87,39 @@ echo ""
 
 # 5. Validate generated baseline
 echo "--- Artifact validation ---"
-check "Baseline validates against schema" python3 -c "
+check "Baseline validates against schema" env VERIFY_BASELINE="$E2E_DIR/baseline.json" python3 -c "
+import os
 import json, sys
 sys.path.insert(0, 'analysis')
 from schemas.validate import validate
-with open('$E2E_DIR/baseline.json') as f:
+with open(os.environ['VERIFY_BASELINE']) as f:
     baseline = json.load(f)
 validate(baseline, 'baseline')
 "
 
-check "Evidence validates against schema" python3 -c "
+check "Evidence validates against schema" env VERIFY_EVIDENCE="$E2E_DIR/evidence.json" python3 -c "
+import os
 import json, sys
 sys.path.insert(0, 'analysis')
 from schemas.validate import validate
-with open('$E2E_DIR/evidence.json') as f:
+with open(os.environ['VERIFY_EVIDENCE']) as f:
     evidence = json.load(f)
 validate(evidence, 'evidence')
 "
 
 # 6. Baseline determinism check
-check "Baseline is deterministic (byte-for-byte)" bash -c "
-./bin/sloscope generate --service checkout-api --namespace payments --evidence testdata/evidence_checkout_api.json --out ${E2E_DIR}/run1 --dry-run 2>/dev/null
-./bin/sloscope generate --service checkout-api --namespace payments --evidence testdata/evidence_checkout_api.json --out ${E2E_DIR}/run2 --dry-run 2>/dev/null
-diff ${E2E_DIR}/run1/baseline.json ${E2E_DIR}/run2/baseline.json
+check "Baseline is deterministic (byte-for-byte)" env E2E_DIR="$E2E_DIR" bash -c "
+mkdir -p \"\$E2E_DIR/run1\" \"\$E2E_DIR/run2\"
+./bin/sloscope generate --service checkout-api --namespace payments --evidence testdata/evidence_checkout_api.json --out \"\$E2E_DIR/run1\" --dry-run 2>/dev/null
+./bin/sloscope generate --service checkout-api --namespace payments --evidence testdata/evidence_checkout_api.json --out \"\$E2E_DIR/run2\" --dry-run 2>/dev/null
+diff \"\$E2E_DIR/run1/baseline.json\" \"\$E2E_DIR/run2/baseline.json\"
 "
 
 # 7. Consistency check: verify baseline values are in expected ranges
-check "Baseline consistency (values in range)" python3 -c "
+check "Baseline consistency (values in range)" env VERIFY_BASELINE="$E2E_DIR/baseline.json" python3 -c "
+import os
 import json, sys
-with open('$E2E_DIR/baseline.json') as f:
+with open(os.environ['VERIFY_BASELINE']) as f:
     b = json.load(f)
 ind = b['indicators']
 assert 0 < ind['latency']['p50_ms'] < ind['latency']['p99_ms'], 'p50 < p99'
@@ -121,9 +129,6 @@ assert ind['throughput']['mean_rps'] > 0, 'throughput > 0'
 "
 
 echo ""
-
-# Cleanup
-rm -rf "$E2E_DIR"
 
 # ---- Doc 2: Drift detector checks ----
 if [ -d internal/drift ]; then
@@ -151,7 +156,8 @@ sys.exit(0 if all_pass else 1)
 
     echo ""
     echo "--- Drift: End-to-end ---"
-    DRIFT_E2E_DIR=$(mktemp -d)
+    DRIFT_E2E_DIR="$VERIFY_ROOT/drift-latency"
+    mkdir -p "$DRIFT_E2E_DIR"
     check "Drift dry-run (baseline + evidence -> drift-signal)" \
         ./bin/sloscope drift \
             --service checkout-api \
@@ -162,24 +168,27 @@ sys.exit(0 if all_pass else 1)
 
     echo ""
     echo "--- Drift: Artifact validation ---"
-    check "Drift signal validates against schema" python3 -c "
+    check "Drift signal validates against schema" env VERIFY_DRIFT_SIGNAL="$DRIFT_E2E_DIR/drift-signal.json" python3 -c "
+import os
 import json, sys
 sys.path.insert(0, 'analysis')
 from schemas.validate import validate
-with open('$DRIFT_E2E_DIR/drift-signal.json') as f:
+with open(os.environ['VERIFY_DRIFT_SIGNAL']) as f:
     validate(json.load(f), 'drift-signal')
 "
 
-    check "Drift signal detects latency regression" python3 -c "
+    check "Drift signal detects latency regression" env VERIFY_DRIFT_SIGNAL="$DRIFT_E2E_DIR/drift-signal.json" python3 -c "
+import os
 import json, sys
-with open('$DRIFT_E2E_DIR/drift-signal.json') as f:
+with open(os.environ['VERIFY_DRIFT_SIGNAL']) as f:
     signal = json.load(f)
 assert signal['dominant_signal']['class'] == 'latency_regression', \
     f'Expected latency_regression, got {signal[\"dominant_signal\"][\"class\"]}'
 "
 
     # No-drift control
-    DRIFT_NODRIFT_DIR=$(mktemp -d)
+    DRIFT_NODRIFT_DIR="$VERIFY_ROOT/drift-nodrift"
+    mkdir -p "$DRIFT_NODRIFT_DIR"
     check "Drift dry-run (no-drift control)" \
         ./bin/sloscope drift \
             --service checkout-api \
@@ -188,9 +197,10 @@ assert signal['dominant_signal']['class'] == 'latency_regression', \
             --out "$DRIFT_NODRIFT_DIR" \
             --dry-run
 
-    check "No-drift control classifies correctly" python3 -c "
+    check "No-drift control classifies correctly" env VERIFY_DRIFT_SIGNAL="$DRIFT_NODRIFT_DIR/drift-signal.json" python3 -c "
+import os
 import json, sys
-with open('$DRIFT_NODRIFT_DIR/drift-signal.json') as f:
+with open(os.environ['VERIFY_DRIFT_SIGNAL']) as f:
     signal = json.load(f)
 assert signal['dominant_signal']['class'] == 'no_significant_drift', \
     f'Expected no_significant_drift, got {signal[\"dominant_signal\"][\"class\"]}'
@@ -198,13 +208,20 @@ assert len(signal['all_breached_indicators']) == 0, \
     f'Expected no breaches, got {signal[\"all_breached_indicators\"]}'
 "
 
-    check "Drift signal is deterministic" bash -c "
-./bin/sloscope drift --service checkout-api --baseline testdata/drift_baseline_reference.json --evidence testdata/drift_live_latency_regression.json --out ${DRIFT_E2E_DIR}/run1 --dry-run 2>/dev/null
-./bin/sloscope drift --service checkout-api --baseline testdata/drift_baseline_reference.json --evidence testdata/drift_live_latency_regression.json --out ${DRIFT_E2E_DIR}/run2 --dry-run 2>/dev/null
-diff ${DRIFT_E2E_DIR}/run1/drift-signal.json ${DRIFT_E2E_DIR}/run2/drift-signal.json
+    check "Drift signal is deterministic" env DRIFT_E2E_DIR="$DRIFT_E2E_DIR" bash -c "
+mkdir -p \"\$DRIFT_E2E_DIR/run1\" \"\$DRIFT_E2E_DIR/run2\"
+./bin/sloscope drift --service checkout-api --baseline testdata/drift_baseline_reference.json --evidence testdata/drift_live_latency_regression.json --out \"\$DRIFT_E2E_DIR/run1\" --dry-run 2>/dev/null
+./bin/sloscope drift --service checkout-api --baseline testdata/drift_baseline_reference.json --evidence testdata/drift_live_latency_regression.json --out \"\$DRIFT_E2E_DIR/run2\" --dry-run 2>/dev/null
+diff \"\$DRIFT_E2E_DIR/run1/drift-signal.json\" \"\$DRIFT_E2E_DIR/run2/drift-signal.json\"
 "
+fi
 
-    rm -rf "$DRIFT_E2E_DIR" "$DRIFT_NODRIFT_DIR"
+echo ""
+echo "--- Prometheus rules ---"
+if command -v promtool >/dev/null 2>&1; then
+    check "Prometheus rules pass promtool" go test ./internal/render/ -run TestRenderPrometheusRules_PromtoolCompatible -count=1
+else
+    echo "  [skip] promtool not found; CI installs promtool and runs this check"
 fi
 
 # ---- Multi-signal evidence checks ----

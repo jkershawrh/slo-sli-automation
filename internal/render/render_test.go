@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -167,7 +168,7 @@ func TestRenderOpenSLO_InvalidJSON_ReturnsError(t *testing.T) {
 
 func TestRenderPrometheusRules_HasGroupsTopLevel(t *testing.T) {
 	proposal := loadTestProposal(t)
-	out, err := RenderPrometheusRules(proposal, "checkout-api")
+	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments")
 	if err != nil {
 		t.Fatalf("RenderPrometheusRules error: %v", err)
 	}
@@ -178,22 +179,22 @@ func TestRenderPrometheusRules_HasGroupsTopLevel(t *testing.T) {
 
 func TestRenderPrometheusRules_ContainsRecordingRules(t *testing.T) {
 	proposal := loadTestProposal(t)
-	out, err := RenderPrometheusRules(proposal, "checkout-api")
+	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments")
 	if err != nil {
 		t.Fatalf("RenderPrometheusRules error: %v", err)
 	}
 	// Should have recording rules for both SLOs
-	if !strings.Contains(out, "record: slo:request-latency-p99:latency_ratio") {
+	if !strings.Contains(out, "record: slo:request_latency_p99:latency_ratio") {
 		t.Error("missing recording rule for latency SLO")
 	}
-	if !strings.Contains(out, "record: slo:service-availability:error_ratio") {
+	if !strings.Contains(out, "record: slo:service_availability:error_ratio") {
 		t.Error("missing recording rule for availability SLO")
 	}
 }
 
 func TestRenderPrometheusRules_ContainsAlertingRulesWithSeverity(t *testing.T) {
 	proposal := loadTestProposal(t)
-	out, err := RenderPrometheusRules(proposal, "checkout-api")
+	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments")
 	if err != nil {
 		t.Fatalf("RenderPrometheusRules error: %v", err)
 	}
@@ -207,7 +208,7 @@ func TestRenderPrometheusRules_ContainsAlertingRulesWithSeverity(t *testing.T) {
 
 func TestRenderPrometheusRules_CorrectBurnRateThresholds(t *testing.T) {
 	proposal := loadTestProposal(t)
-	out, err := RenderPrometheusRules(proposal, "checkout-api")
+	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments")
 	if err != nil {
 		t.Fatalf("RenderPrometheusRules error: %v", err)
 	}
@@ -222,7 +223,7 @@ func TestRenderPrometheusRules_CorrectBurnRateThresholds(t *testing.T) {
 
 func TestRenderPrometheusRules_MultiWindowConditions(t *testing.T) {
 	proposal := loadTestProposal(t)
-	out, err := RenderPrometheusRules(proposal, "checkout-api")
+	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments")
 	if err != nil {
 		t.Fatalf("RenderPrometheusRules error: %v", err)
 	}
@@ -241,19 +242,77 @@ func TestRenderPrometheusRules_MultiWindowConditions(t *testing.T) {
 
 func TestRenderPrometheusRules_RecordingRulesReferenceService(t *testing.T) {
 	proposal := loadTestProposal(t)
-	out, err := RenderPrometheusRules(proposal, "checkout-api")
+	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments")
 	if err != nil {
 		t.Fatalf("RenderPrometheusRules error: %v", err)
 	}
 	if !strings.Contains(out, `service="checkout-api"`) {
 		t.Errorf("recording rules do not reference service 'checkout-api':\n%s", out)
 	}
+	if !strings.Contains(out, `namespace="payments"`) {
+		t.Errorf("recording rules do not reference namespace 'payments':\n%s", out)
+	}
 }
 
 func TestRenderPrometheusRules_InvalidJSON_ReturnsError(t *testing.T) {
-	_, err := RenderPrometheusRules(json.RawMessage(`{bad`), "svc")
+	_, err := RenderPrometheusRules(json.RawMessage(`{bad`), "svc", "default")
 	if err == nil {
 		t.Error("expected error for invalid JSON input")
+	}
+}
+
+func TestRenderPrometheusRules_RejectsInvalidServiceName(t *testing.T) {
+	proposal := loadTestProposal(t)
+	_, err := RenderPrometheusRules(proposal, `bad"service`, "payments")
+	if err == nil {
+		t.Error("expected invalid service name to be rejected")
+	}
+}
+
+func TestRenderPrometheusRules_DefaultNamespace(t *testing.T) {
+	proposal := loadTestProposal(t)
+	out, err := RenderPrometheusRules(proposal, "checkout-api", "")
+	if err != nil {
+		t.Fatalf("RenderPrometheusRules error: %v", err)
+	}
+	if !strings.Contains(out, `namespace="default"`) {
+		t.Errorf("expected default namespace in output:\n%s", out)
+	}
+}
+
+func TestRenderPrometheusRules_UsesAvgOverTimeForRecordedErrorRatio(t *testing.T) {
+	proposal := loadTestProposal(t)
+	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments")
+	if err != nil {
+		t.Fatalf("RenderPrometheusRules error: %v", err)
+	}
+	if !strings.Contains(out, `avg_over_time(slo:service_availability:error_ratio`) {
+		t.Errorf("expected avg_over_time on recorded error ratio:\n%s", out)
+	}
+	if strings.Contains(out, `slo:service_availability:error_ratio{service="checkout-api"}[`) {
+		t.Errorf("unexpected raw range selector comparison in output:\n%s", out)
+	}
+}
+
+func TestRenderPrometheusRules_PromtoolCompatible(t *testing.T) {
+	if _, err := exec.LookPath("promtool"); err != nil {
+		t.Skip("promtool not installed")
+	}
+
+	proposal := loadTestProposal(t)
+	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments")
+	if err != nil {
+		t.Fatalf("RenderPrometheusRules error: %v", err)
+	}
+
+	path := t.TempDir() + "/prometheus-rules.yaml"
+	if err := os.WriteFile(path, []byte(out), 0o644); err != nil {
+		t.Fatalf("failed to write temporary rules file: %v", err)
+	}
+
+	cmd := exec.Command("promtool", "check", "rules", path)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("promtool check rules failed: %v\n%s\nRules:\n%s", err, output, out)
 	}
 }
 
@@ -414,9 +473,9 @@ func TestRenderAuditBundle_EmptySections(t *testing.T) {
 
 func TestRenderAuditBundle_Deterministic(t *testing.T) {
 	sections := map[string]json.RawMessage{
-		"alpha":   json.RawMessage(`{"a":1}`),
-		"beta":    json.RawMessage(`{"b":2}`),
-		"gamma":   json.RawMessage(`{"c":3}`),
+		"alpha": json.RawMessage(`{"a":1}`),
+		"beta":  json.RawMessage(`{"b":2}`),
+		"gamma": json.RawMessage(`{"c":3}`),
 	}
 
 	result1, err := RenderAuditBundle("test-service", sections)

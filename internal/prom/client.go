@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/sloscope/sloscope/internal/names"
 )
 
 // Client talks to a Prometheus or Thanos HTTP API endpoint.
@@ -102,6 +104,13 @@ func (c *Client) doQuery(ctx context.Context, path string, params url.Values) (*
 // CollectEvidence gathers all telemetry for a service over a lookback window
 // and returns an evidence bundle ready for baseline computation.
 func (c *Client) CollectEvidence(ctx context.Context, service, namespace string, lookback time.Duration) (*EvidenceBundle, error) {
+	if err := names.ValidateKubernetesName("service", service); err != nil {
+		return nil, err
+	}
+	if err := names.ValidateKubernetesName("namespace", namespace); err != nil {
+		return nil, err
+	}
+
 	now := time.Now().UTC()
 	start := now.Add(-lookback)
 	step := computeStep(lookback)
@@ -210,15 +219,18 @@ type serviceQueries struct {
 }
 
 func buildQueries(service, namespace string) serviceQueries {
-	labels := fmt.Sprintf(`service="%s", namespace="%s"`, service, namespace)
+	serviceLabel := names.PromLabelValue(service)
+	namespaceLabel := names.PromLabelValue(namespace)
+	serviceRegex := names.PromRegexLiteral(service)
+	labels := fmt.Sprintf(`service="%s",namespace="%s"`, serviceLabel, namespaceLabel)
 	return serviceQueries{
 		histogramBuckets:  fmt.Sprintf(`http_request_duration_seconds_bucket{%s}`, labels),
 		histogramSum:      fmt.Sprintf(`http_request_duration_seconds_sum{%s}`, labels),
 		histogramCount:    fmt.Sprintf(`http_request_duration_seconds_count{%s}`, labels),
 		requestTotal:      fmt.Sprintf(`http_requests_total{%s}`, labels),
 		errorTotal:        fmt.Sprintf(`http_requests_total{%s, code=~"5.."}`, labels),
-		cpuUtilization:    fmt.Sprintf(`rate(container_cpu_usage_seconds_total{namespace="%s", pod=~"%s-.*"}[5m])`, namespace, service),
-		memoryUtilization: fmt.Sprintf(`container_memory_working_set_bytes{namespace="%s", pod=~"%s-.*"}`, namespace, service),
+		cpuUtilization:    fmt.Sprintf(`rate(container_cpu_usage_seconds_total{namespace="%s",pod=~"%s-.*"}[5m])`, namespaceLabel, serviceRegex),
+		memoryUtilization: fmt.Sprintf(`container_memory_working_set_bytes{namespace="%s",pod=~"%s-.*"}`, namespaceLabel, serviceRegex),
 	}
 }
 

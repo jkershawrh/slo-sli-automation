@@ -286,8 +286,8 @@ export const api = {
   classifyDrift: (driftSignal: DriftSignal) =>
     request<DriftReport>('POST', '/api/v1/drift/classify', { drift_signal: driftSignal }),
 
-  renderArtifacts: (proposal: Proposal, service = 'checkout-api') =>
-    request<RenderOutput>('POST', '/api/v1/render', { proposal, service }),
+  renderArtifacts: (proposal: Proposal, service = 'checkout-api', namespace = 'payments') =>
+    request<RenderOutput>('POST', '/api/v1/render', { proposal, service, namespace }),
 
   listFixtures: () =>
     request<FixturesListing>('GET', '/api/v1/fixtures'),

@@ -13,9 +13,35 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "analysis"))
 sys.path.insert(0, str(PROJECT_ROOT / "backend"))
 
+import server
 from server import app
 
 client = TestClient(app)
+
+
+# --- CORS config ---
+
+class TestCORSConfig:
+    def test_default_cors_origins_are_not_wildcard(self, monkeypatch):
+        monkeypatch.delenv("SLOSCOPE_ALLOW_ANY_ORIGIN", raising=False)
+        monkeypatch.delenv("SLOSCOPE_CORS_ORIGINS", raising=False)
+        assert server.get_cors_origins() != ["*"]
+
+    def test_wildcard_cors_requires_explicit_opt_in(self, monkeypatch):
+        monkeypatch.setenv("SLOSCOPE_ALLOW_ANY_ORIGIN", "true")
+        monkeypatch.delenv("SLOSCOPE_CORS_ORIGINS", raising=False)
+        assert server.get_cors_origins() == ["*"]
+
+    def test_cors_origins_from_env(self, monkeypatch):
+        monkeypatch.delenv("SLOSCOPE_ALLOW_ANY_ORIGIN", raising=False)
+        monkeypatch.setenv(
+            "SLOSCOPE_CORS_ORIGINS",
+            "https://example.com, https://admin.example.com",
+        )
+        assert server.get_cors_origins() == [
+            "https://example.com",
+            "https://admin.example.com",
+        ]
 
 
 # --- Health ---
@@ -185,6 +211,37 @@ class TestPropose:
             if old_base: os.environ["LLM_BASE_URL"] = old_base
             if old_key: os.environ["LLM_API_KEY"] = old_key
 
+    def test_live_propose_context_does_not_mutate_process_env(self, monkeypatch):
+        import propose as propose_module
+
+        captured = {}
+
+        def fake_propose(baseline, client=None, model=None, maturity=None, context_type=None):
+            captured["maturity"] = maturity
+            captured["context_type"] = context_type
+            return {
+                "schema_version": 3,
+                "service": baseline["service"],
+                "baseline_schema_version": baseline["schema_version"],
+                "slos": [],
+            }
+
+        monkeypatch.setattr(propose_module, "propose", fake_propose)
+        monkeypatch.setenv("LLM_BASE_URL", "http://llm.test/v1")
+        monkeypatch.setenv("LLM_API_KEY", "test-key")
+        monkeypatch.setenv("SLOSCOPE_MATURITY_TIER", "original-tier")
+        monkeypatch.setenv("SLOSCOPE_CONTEXT_TYPE", "original-context")
+
+        bl = client.get("/api/v1/fixtures/baseline/checkout-api").json()
+        r = client.post(
+            "/api/v1/propose",
+            json={"baseline": bl, "maturity": "mature", "context_type": "infra"},
+        )
+        assert r.status_code == 200
+        assert captured == {"maturity": "mature", "context_type": "infra"}
+        assert os.environ["SLOSCOPE_MATURITY_TIER"] == "original-tier"
+        assert os.environ["SLOSCOPE_CONTEXT_TYPE"] == "original-context"
+
 
 # --- Drift Signal ---
 
@@ -251,6 +308,70 @@ class TestDriftClassify:
             if old_base: os.environ["LLM_BASE_URL"] = old_base
             if old_key: os.environ["LLM_API_KEY"] = old_key
 
+    def test_refined_dependency_class_falls_back_to_latency_report(self):
+        old_base = os.environ.pop("LLM_BASE_URL", None)
+        old_key = os.environ.pop("LLM_API_KEY", None)
+        try:
+            ds = client.get("/api/v1/fixtures/drift/latency_regression").json()
+            ds["dominant_signal"]["class"] = "dependency_latency_regression"
+            r = client.post("/api/v1/drift/classify", json={"drift_signal": ds})
+            assert r.status_code == 200
+            assert r.json()["classification"] == "latency_regression"
+        finally:
+            if old_base: os.environ["LLM_BASE_URL"] = old_base
+            if old_key: os.environ["LLM_API_KEY"] = old_key
+
+    def test_refined_error_category_class_falls_back_to_error_rate_report(self):
+        old_base = os.environ.pop("LLM_BASE_URL", None)
+        old_key = os.environ.pop("LLM_API_KEY", None)
+        try:
+            ds = client.get("/api/v1/fixtures/drift/error_rate_elevation").json()
+            ds["dominant_signal"]["class"] = "error_category_shift"
+            ds["indicators"][0]["first_pass_class"] = "error_category_shift"
+            ds["indicators"][0]["band_breach"] = True
+            r = client.post("/api/v1/drift/classify", json={"drift_signal": ds})
+            assert r.status_code == 200
+            assert r.json()["classification"] == "error_rate_elevation"
+        finally:
+            if old_base: os.environ["LLM_BASE_URL"] = old_base
+            if old_key: os.environ["LLM_API_KEY"] = old_key
+
+    def test_live_classify_context_does_not_mutate_process_env(self, monkeypatch):
+        import classify as classify_module
+
+        captured = {}
+
+        def fake_classify(drift_signal, client=None, model=None, context_type=None):
+            captured["context_type"] = context_type
+            return {
+                "schema_version": 1,
+                "service": drift_signal["service"],
+                "classification": "no_significant_drift",
+                "severity": "info",
+                "likely_cause": "No significant drift.",
+                "recommendations": [
+                    {
+                        "action": "Continue monitoring",
+                        "confidence": "high",
+                        "rationale": "No indicators breached.",
+                    }
+                ],
+            }
+
+        monkeypatch.setattr(classify_module, "classify", fake_classify)
+        monkeypatch.setenv("LLM_BASE_URL", "http://llm.test/v1")
+        monkeypatch.setenv("LLM_API_KEY", "test-key")
+        monkeypatch.setenv("SLOSCOPE_CONTEXT_TYPE", "original-context")
+
+        ds = client.get("/api/v1/fixtures/drift/no_significant_drift").json()
+        r = client.post(
+            "/api/v1/drift/classify",
+            json={"drift_signal": ds, "context_type": "infra"},
+        )
+        assert r.status_code == 200
+        assert captured == {"context_type": "infra"}
+        assert os.environ["SLOSCOPE_CONTEXT_TYPE"] == "original-context"
+
 
 # --- Render ---
 
@@ -293,6 +414,39 @@ class TestRender:
             rules = r.json()["prom_rules"]
             assert "groups:" in rules
             assert "record:" in rules
+            assert "slo:request_latency_p99:latency_ratio" in rules
+            assert 'namespace="payments"' in rules
+        finally:
+            if old_base: os.environ["LLM_BASE_URL"] = old_base
+            if old_key: os.environ["LLM_API_KEY"] = old_key
+
+    def test_render_accepts_namespace(self):
+        old_base = os.environ.pop("LLM_BASE_URL", None)
+        old_key = os.environ.pop("LLM_API_KEY", None)
+        try:
+            bl = client.get("/api/v1/fixtures/baseline/checkout-api").json()
+            pr = client.post("/api/v1/propose", json={"baseline": bl}).json()
+            r = client.post(
+                "/api/v1/render",
+                json={"proposal": pr, "service": "checkout-api", "namespace": "staging"},
+            )
+            assert r.status_code == 200
+            assert 'namespace="staging"' in r.json()["prom_rules"]
+        finally:
+            if old_base: os.environ["LLM_BASE_URL"] = old_base
+            if old_key: os.environ["LLM_API_KEY"] = old_key
+
+    def test_render_rejects_invalid_service_name(self):
+        bl = client.get("/api/v1/fixtures/baseline/checkout-api").json()
+        old_base = os.environ.pop("LLM_BASE_URL", None)
+        old_key = os.environ.pop("LLM_API_KEY", None)
+        try:
+            pr = client.post("/api/v1/propose", json={"baseline": bl}).json()
+            r = client.post(
+                "/api/v1/render",
+                json={"proposal": pr, "service": "bad_service"},
+            )
+            assert r.status_code == 400
         finally:
             if old_base: os.environ["LLM_BASE_URL"] = old_base
             if old_key: os.environ["LLM_API_KEY"] = old_key
