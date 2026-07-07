@@ -224,7 +224,7 @@ analysis/
   serialize.py             Canonical JSON (sorted keys, 2-space indent, 6 sig digits)
   schemas/                 JSON schemas (single source of truth, embedded in Go via go:embed)
   evals/                   Eval fixtures (14 scenarios), rubrics, recorded responses
-  tests/                   pytest suite (417 tests)
+  tests/                   pytest suite (431 tests)
 testdata/                  Recorded Prometheus fixtures for hermetic CI
 scripts/
   preflight.sh             Environment readiness (Go, Python, Prometheus, LLM, promtool)
@@ -266,7 +266,7 @@ go test ./... -v                       # Go only
 python3 -m pytest analysis/tests/ -v   # Python only
 ```
 
-525 tests (83 Go + 417 Python + 23 frontend). 29 verification checks. Eval grids across 14 scenarios (4 proposal + 10 drift). Validated live against `granite-3-2-8b-instruct` and `qwen3-235b`.
+542 tests (88 Go + 431 Python + 23 frontend). 29 verification checks. Eval grids across 14 scenarios (4 proposal + 10 drift). Validated live against `granite-3-2-8b-instruct` and `qwen3-235b`.
 
 ## Schemas
 
