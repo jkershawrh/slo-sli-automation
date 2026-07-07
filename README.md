@@ -1,15 +1,17 @@
 # sloscope
 
-Evidence-based SLO/SLI generator and drift detector for OpenShift services and infrastructure. Built for the Red Hat Demo Platform (RHDP) to replace guesswork-driven SLO targets with defensible, data-grounded objectives backed by Prometheus/Thanos telemetry and IBM Granite inference.
+An open framework for replacing guesswork-driven SLO targets with defensible objectives grounded in Prometheus/Thanos telemetry and LLM-powered analysis. Works with any Prometheus/Thanos endpoint, any OpenAI-compatible LLM, and any OpenShift or Kubernetes cluster.
 
 ## Why this exists
 
-As RHDP consolidates from GPU-heavy multi-model deployments to a leaner Intel Xeon 6 CPU-only architecture for Summit Connect events, reliability becomes the constraint. SLO targets set by gut feel ("let's aim for 99.9%") break in two ways: they are either unachievable (triggering alert fatigue) or too loose (hiding real degradation during live demos).
+SLO targets set by gut feel ("let's aim for 99.9%") break in two ways: they are either unachievable (triggering alert fatigue) or too loose (hiding real degradation). This is the aspirational trap -- teams pick round numbers that sound right, then either drown in false alerts or miss genuine incidents.
 
-sloscope solves this by grounding every SLO in observed telemetry:
+The second failure mode is directional blindness. Not all signals improve the same way. Latency and error rates are "lower is better." Availability and throughput are "higher is better." Generic dashboards that ignore directionality produce nonsensical targets.
+
+sloscope solves both problems by grounding every SLO in observed telemetry:
 
 - A service running at 93.2% availability gets an incremental improvement target, not an aspirational 99.9% that will never be met
-- A model-serving endpoint with high p99 variance gets wider headroom so normal jitter does not page the on-call during a Summit Connect session
+- A model-serving endpoint with high p99 variance gets wider headroom so normal jitter does not page the on-call during a critical window
 - When latency regresses after a deployment, the drift detector identifies whether it is a tail-latency issue (p99 up, p50 stable) or systemic slowdown (everything up), and recommends targeted investigation rather than generic "check the logs"
 
 ## How it works
@@ -18,10 +20,10 @@ Two stages. Evidence first, judgment second.
 
 **Stage one is deterministic.** Query Prometheus/Thanos, compute empirical baselines in code: latency percentiles, error rates, throughput distribution, availability, saturation. No LLM touches this. The numbers are measured, reproducible, and auditable.
 
-**Stage two is judgment.** Hand the computed evidence to an LLM (Granite on the MAAS LiteLLM proxy, or any OpenAI-compatible endpoint). It proposes SLO targets with stddev-based headroom, classifies drift with prioritized remediation plans, and writes rationale citing specific observed values. It never fabricates a number, and it never actuates.
+**Stage two is judgment.** Hand the computed evidence to an LLM (any OpenAI-compatible endpoint -- LiteLLM, vLLM, Ollama, or a hosted API). It proposes SLO targets with stddev-based headroom, classifies drift with prioritized remediation plans, and writes rationale citing specific observed values. It never fabricates a number, and it never actuates.
 
 ```
-          OpenShift Cluster (MAAS / rac-MAAS)
+          Kubernetes / OpenShift Cluster
                     |
               Prometheus/Thanos
                     |
@@ -29,7 +31,7 @@ Two stages. Evidence first, judgment second.
                     |
             [Deterministic Baseline]        <-- stage one: code, reproducible
                     |
-            [LLM Proposal/Classification]   <-- stage two: Granite via LiteLLM
+            [LLM Proposal/Classification]   <-- stage two: any OpenAI-compatible endpoint
                     |
           +---------+---------+
           |         |         |
@@ -39,9 +41,9 @@ Two stages. Evidence first, judgment second.
 
 ## Target audience
 
-- **RHDP platform engineers** managing the MAAS clusters, model-serving endpoints, and demo applications that must stay reliable through Summit Connect
-- **SREs** operating services on OpenShift who need SLOs derived from actual performance data, not aspirational targets
-- **Demo lab owners** who need to know if their lab's performance has drifted from its baseline before a live event
+- **Platform engineers** running services on Kubernetes or OpenShift who need SLOs derived from actual performance data, not aspirational targets
+- **SREs and DevOps teams** responsible for service reliability who want defensible error budgets and evidence-based alerting thresholds
+- **Operations teams** who need to know if a service's performance has drifted from its baseline before a release, migration, or critical event
 
 ## Quick start
 
@@ -58,8 +60,8 @@ Two stages. Evidence first, judgment second.
 export PROM_URL="https://thanos-querier.openshift-monitoring.svc:9091"
 export PROM_TOKEN="..."                                     # Optional bearer token for in-cluster Thanos
 
-# LLM (OpenAI-compatible -- LiteLLM proxy on MAAS, vLLM, RHEL AI, or any endpoint)
-export LLM_BASE_URL="https://litellm.example.com/v1"
+# LLM (OpenAI-compatible -- LiteLLM, vLLM, Ollama, or any hosted endpoint)
+export LLM_BASE_URL="https://llm.example.com/v1"
 export LLM_API_KEY="..."
 export LLM_MODEL="granite-3-2-8b-instruct"
 ```
@@ -180,17 +182,6 @@ Each recommendation includes a verification method: "Re-run drift detection afte
 
 For positive drift, the tool recommends updating the baseline and suggests tighter SLO targets with specific values.
 
-## Fits into the RHDP toolchain
-
-sloscope complements the broader RHDP operations toolkit:
-
-- **LiftOff** validates that a lab CAN run on the target hardware (5-gate readiness pipeline)
-- **sloscope** validates that it IS running reliably over time (evidence-based SLOs + drift detection)
-- **NovaScan** monitors cluster capacity (can we fit more labs?)
-- **DarkScope** scans for security issues
-
-Together they cover the lifecycle: readiness, reliability, capacity, security.
-
 ## Architecture
 
 ```
@@ -253,7 +244,7 @@ go test ./... -v                       # Go only
 python3 -m pytest analysis/tests/ -v   # Python only
 ```
 
-525 tests (83 Go + 417 Python + 23 frontend). 29 verification checks. Eval grids across 14 scenarios (4 proposal + 10 drift). Validated live against `granite-3-2-8b-instruct` and `qwen3-235b` on the MAAS GPU tier.
+525 tests (83 Go + 417 Python + 23 frontend). 29 verification checks. Eval grids across 14 scenarios (4 proposal + 10 drift). Validated live against `granite-3-2-8b-instruct` and `qwen3-235b`.
 
 ## Schemas
 

@@ -6,7 +6,7 @@
 
 ## 1. Abstract
 
-sloscope is an evidence-based SLO/SLI generator and drift detector for OpenShift services. It replaces aspirational SLO targets with defensible, data-grounded objectives derived from Prometheus/Thanos telemetry across three observability pillars (metrics, traces, logs). A two-stage architecture separates deterministic baseline computation (completed in 253.50ms end-to-end) from LLM-driven judgment (SLO proposals and drift classification). Benchmarking across 14 eval scenarios produced a 100% pass rate on both the proposal grid (4/4) and drift grid (10/10). Model comparison revealed that qwen3-235b achieves 100% schema v3 compliance with correct SLO/SLA directional reasoning, while granite-3-2-8b-instruct fails all consistency checks at a 0% proposal pass rate. All deterministic stages are byte-for-byte reproducible.
+sloscope is an evidence-based SLO/SLI generator and drift detector for services running on Kubernetes and OpenShift. It replaces aspirational SLO targets with defensible, data-grounded objectives derived from Prometheus/Thanos telemetry across three observability pillars (metrics, traces, logs). A two-stage architecture separates deterministic baseline computation (completed in 253.50ms end-to-end) from LLM-driven judgment (SLO proposals and drift classification). Benchmarking across 14 eval scenarios produced a 100% pass rate on both the proposal grid (4/4) and drift grid (10/10). Model comparison revealed that qwen3-235b achieves 100% schema v3 compliance with correct SLO/SLA directional reasoning, while granite-3-2-8b-instruct fails all consistency checks at a 0% proposal pass rate. All deterministic stages are byte-for-byte reproducible.
 
 ## 2. Problem Statement
 
@@ -179,12 +179,12 @@ This multi-signal evidence is what enables the LLM to produce differentiated rem
 
 ## 8. Operational Implications
 
-### Performance Profile for RHDP and Summit Connect
+### Performance Profile
 
 | Operation | Time | LLM Required | Use Case |
 |-----------|------|--------------|----------|
-| Generate dry-run | 253.50ms | No | Pre-event baseline snapshot, CI pipeline gate |
-| Drift dry-run | 221.09ms | No | Pre-demo readiness check, continuous monitoring |
+| Generate dry-run | 253.50ms | No | Baseline snapshot, CI pipeline gate |
+| Drift dry-run | 221.09ms | No | Pre-deployment readiness check, continuous monitoring |
 | Full proposal (qwen3-235b) | 57.26s avg | Yes | Initial SLO definition for a service |
 | Full proposal (granite-3-2-8b-instruct) | 85.36s avg (fails) | Yes | Not viable for proposals |
 | Drift classification (qwen3-235b) | 32.87s | Yes | Post-deployment drift analysis with remediation |
@@ -192,17 +192,17 @@ This multi-signal evidence is what enables the LLM to produce differentiated rem
 
 ### Operational Takeaways
 
-**Deterministic stages are fast enough for CI.** Both dry-run paths complete in under 300ms with no external dependencies. These can gate deployments or run as pre-event readiness checks without impacting pipeline speed.
+**Deterministic stages are fast enough for CI.** Both dry-run paths complete in under 300ms with no external dependencies. These can gate deployments or run as pre-release readiness checks without impacting pipeline speed.
 
 **Model selection is a correctness decision, not just a performance one.** granite-3-2-8b-instruct is faster for drift classification (10.41s vs 32.87s) but cannot produce valid SLO proposals. For the full pipeline, qwen3-235b is the only viable option among the two tested models.
 
-**Drift detection as a pre-event gate.** The 221.09ms dry-run can verify that a demo lab's performance has not drifted from its baseline. Before a Summit Connect session, run `sloscope drift --dry-run` to confirm all indicators are within tolerance bands. If drift is detected, escalate to a full LLM classification (32.87s with qwen3-235b) for remediation guidance.
+**Drift detection as a pre-deployment gate.** The 221.09ms dry-run can verify that a service's performance has not drifted from its baseline. Before a release, migration, or critical event, run `sloscope drift --dry-run` to confirm all indicators are within tolerance bands. If drift is detected, escalate to a full LLM classification (32.87s with qwen3-235b) for remediation guidance.
 
 **granite-3-2-8b-instruct is viable for drift-only workflows.** It correctly classifies drift and produces schema-valid reports. If the SLO proposal is pre-computed with qwen3-235b and the only runtime need is drift monitoring, granite can serve that role at 3x lower latency.
 
 ## 9. Conclusion
 
-Evidence-first SLO generation with a proper SLI/SLO/SLA hierarchy requires a model capable of nuanced directional reasoning. The benchmark demonstrates this concretely: qwen3-235b achieves 100% pass rate on schema v3 proposal generation with correct directional operators across all four golden signals, while granite-3-2-8b-instruct fails every attempt by defaulting to aspirational targets that violate the SLO-stricter-than-SLA constraint. The deterministic stages -- baseline computation, deviation measurement, eval grids -- are fast (sub-300ms E2E), byte-for-byte reproducible, and independent of any LLM. With 525 tests, 29 verification checks, and 14 eval scenarios all passing, sloscope is ready for Summit Connect operations: dry-run drift checks gate demo readiness in 221ms, and full LLM-driven analysis delivers classified remediation in under 33 seconds.
+Evidence-first SLO generation with a proper SLI/SLO/SLA hierarchy requires a model capable of nuanced directional reasoning. The benchmark demonstrates this concretely: qwen3-235b achieves 100% pass rate on schema v3 proposal generation with correct directional operators across all four golden signals, while granite-3-2-8b-instruct fails every attempt by defaulting to aspirational targets that violate the SLO-stricter-than-SLA constraint. The deterministic stages -- baseline computation, deviation measurement, eval grids -- are fast (sub-300ms E2E), byte-for-byte reproducible, and independent of any LLM. With 525 tests, 29 verification checks, and 14 eval scenarios all passing, sloscope is ready for production use: dry-run drift checks gate deployment readiness in 221ms, and full LLM-driven analysis delivers classified remediation in under 33 seconds.
 
 ---
 
