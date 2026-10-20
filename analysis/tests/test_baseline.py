@@ -539,3 +539,28 @@ class TestSerializeCanonical:
         output = serialize({"x": 1})
         assert output.endswith("\n")
         assert not output.endswith("\n\n")
+
+
+class TestIntervalCounterEstimates:
+    def test_fractional_window_counts_are_not_truncated(self):
+        evidence = _load_fixture("evidence_checkout_api.json")
+        evidence["series"]["request_total"]["total"] = 0.75
+        evidence["series"]["error_total"]["total"] = 0.25
+        evidence["series"]["latency_histogram"]["total_count"] = 100000.5
+        for bucket in evidence["series"]["latency_histogram"]["buckets"]:
+            bucket["count"] *= 100000.5 / 100000
+        evidence["series"]["latency_histogram"]["sum"] *= 100000.5 / 100000
+        baseline = compute_baseline(evidence)
+        assert baseline["indicators"]["error_rate"]["ratio"] == pytest.approx(1 / 3)
+        assert baseline["indicators"]["error_rate"]["error_count"] == 0.25
+        assert baseline["indicators"]["error_rate"]["total_count"] == 0.75
+        assert baseline["indicators"]["latency"]["sample_count"] == 100000.5
+        validate(baseline, "baseline")
+
+    @pytest.mark.parametrize("requests,errors", [(0, 0), (1, 2), (float("inf"), 0), (1, float("nan"))])
+    def test_nonpositive_or_inconsistent_counts_fail(self, requests, errors):
+        evidence = _load_fixture("evidence_checkout_api.json")
+        evidence["series"]["request_total"]["total"] = requests
+        evidence["series"]["error_total"]["total"] = errors
+        with pytest.raises(ValueError, match="interval|Interval|Non-finite"):
+            compute_baseline(evidence)

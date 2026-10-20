@@ -99,8 +99,14 @@ def compute_baseline(evidence):
     stddev = compute_stddev_from_histogram(buckets, total_count, hist_sum) * 1000
 
     # Error rate
-    error_count = int(series["error_total"]["total"])
-    request_count = int(series["request_total"]["total"])
+    # Prometheus increase() extrapolates window totals and can be fractional.
+    # Preserve those estimates rather than changing the error ratio by truncation.
+    error_count = series["error_total"]["total"]
+    request_count = series["request_total"]["total"]
+    if not math.isfinite(request_count) or request_count <= 0:
+        raise ValueError("A positive finite interval request total is required")
+    if not math.isfinite(error_count) or not 0 <= error_count <= request_count:
+        raise ValueError("Interval error total must be finite and within the request total")
     error_ratio = error_count / request_count
     # Binomial approximation for stddev of rate
     error_stddev = math.sqrt(error_ratio * (1 - error_ratio) / request_count)
@@ -139,8 +145,8 @@ def compute_baseline(evidence):
                 "p95_ms": p95,
                 "p99_ms": p99,
                 "stddev_ms": stddev,
-                "sample_count": int(total_count),
-                "source_query": evidence["provenance"]["queries"].get("latency", ""),
+                "sample_count": total_count,
+                "source_query": evidence["provenance"]["queries"].get("latency_histogram", evidence["provenance"]["queries"].get("latency", "")),
             },
             "error_rate": {
                 "ratio": error_ratio,

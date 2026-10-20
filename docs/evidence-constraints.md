@@ -46,6 +46,34 @@ until qualified metric bindings exist. OpenSLO output is a preview requiring con
 telemetry path with a bounded timeout, inherited server configuration and verified TLS; callers
 cannot supply a URL, token or command. Collection initializes a reference once. Later windows
 are stored separately as `current-baseline`, and drift compares them to the preserved reference.
+The operator can select `SLOSCOPE_LOOKBACK` as a positive integer duration in `s`, `m`, `h`, or
+`d`, bounded from 2 minutes through 30 days. The default is `1h`. This server setting reaches the
+Go CLI; an HTTP caller cannot choose the window or collector command. Returned evidence must
+identify the requested window. Short dev windows still need sufficient actual sample coverage.
+
+The Go collector requests Prometheus `increase(counter[window])` for each original counter
+series before adding instances, HTTP codes, or equal histogram bounds. Prometheus corrects
+counter resets and extrapolates to the selected window, so totals can be fractional estimates;
+they are preserved without rounding through baseline ratios. Histogram instances must supply a
+consistent bucket layout, sum/count series, and a matching `+Inf` count. Throughput samples come
+from `rate()`, not lifetime counter values. Request series must carry a valid `code` label;
+errors here mean HTTP 5xx. An absent 5xx result is measured zero only when the independently
+queried, code-labeled request increases contain no 5xx traffic. Missing requests, inconsistent
+error results, invalid histograms, non-finite values, and partial-response warnings fail collection.
+
+Collector coverage is the *minimum fraction of occupied time bins across every observed series*
+in required histogram bucket/sum/count and request families. The bins use `count_over_time`
+with a cadence of at least 60 seconds, aiming for at most 500 bins. A bin counts once when a
+sample exists; extra buckets, instances, HTTP codes, or duplicate points cannot inflate it.
+Missing series or a family without a usable increase do not count as complete coverage. This
+is a conservative sample-presence measure, not proof of scrape success, a complete inventory
+of expected instances, or telemetry authenticity. Rate samples need at least two source samples
+in their range. A newly started or sparse target may correctly fail the 0.8 admission threshold.
+
+Live saturation stays `available: false`: raw CPU cores and memory bytes cannot be presented
+as utilization ratios without qualified limit/denominator bindings. This does not change
+explicitly supplied, already-qualified fixture artifacts.
+
 The CronJob uses that same path and propagates failure. Baseline promotion remains an explicit
 operator review operation; collection cannot perform it.
 

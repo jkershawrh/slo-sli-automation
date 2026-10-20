@@ -5,10 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -98,6 +96,9 @@ func (c *Client) doQuery(ctx context.Context, path string, params url.Values) (*
 		return nil, fmt.Errorf("decoding prometheus response: %w", err)
 	}
 
+	if result.Status != "success" || len(result.Warnings) > 0 {
+		return nil, fmt.Errorf("prometheus query failed or returned partial-data warnings")
+	}
 	return &result, nil
 }
 
@@ -111,74 +112,105 @@ func (c *Client) CollectEvidence(ctx context.Context, service, namespace string,
 		return nil, err
 	}
 
-	now := time.Now().UTC()
+	if lookback < 2*time.Minute || lookback > 30*24*time.Hour {
+		return nil, fmt.Errorf("lookback must be between 2m and 30d")
+	}
+	now := time.Now().UTC().Truncate(time.Second)
 	start := now.Add(-lookback)
 	step := computeStep(lookback)
-
+	queryStart := start.Add(step)
 	queries := buildQueries(service, namespace)
 	provQueries := make(map[string]string)
 
-	// Execute latency histogram bucket query.
-	provQueries["latency_histogram"] = queries.histogramBuckets
-	histRes, err := c.QueryRange(ctx, queries.histogramBuckets, start, now, step)
+	// increase runs on each original counter before aggregation, so independent
+	// instance resets cannot cancel increases from other instances.
+	interval := formatDuration(lookback)
+	instant := func(name, selector string) (*QueryResult, error) {
+		query := fmt.Sprintf("increase(%s[%s])", selector, interval)
+		provQueries[name] = query
+		res, err := c.InstantQuery(ctx, query, now)
+		if err != nil {
+			return nil, fmt.Errorf("querying %s: %w", name, err)
+		}
+		if res.Data.ResultType != "vector" {
+			return nil, fmt.Errorf("%s must return an instant vector", name)
+		}
+		return res, nil
+	}
+	histRes, err := instant("latency_histogram", queries.histogramBuckets)
 	if err != nil {
-		return nil, fmt.Errorf("querying latency histogram: %w", err)
+		return nil, err
 	}
-
-	// Execute histogram sum query.
-	provQueries["latency_sum"] = queries.histogramSum
-	sumRes, err := c.QueryRange(ctx, queries.histogramSum, start, now, step)
+	sumRes, err := instant("latency_sum", queries.histogramSum)
 	if err != nil {
-		return nil, fmt.Errorf("querying latency sum: %w", err)
+		return nil, err
 	}
-
-	// Execute histogram count query.
-	provQueries["latency_count"] = queries.histogramCount
-	countRes, err := c.QueryRange(ctx, queries.histogramCount, start, now, step)
+	countRes, err := instant("latency_count", queries.histogramCount)
 	if err != nil {
-		return nil, fmt.Errorf("querying latency count: %w", err)
+		return nil, err
 	}
-
-	// Execute request total query.
-	provQueries["request_total"] = queries.requestTotal
-	reqRes, err := c.QueryRange(ctx, queries.requestTotal, start, now, step)
+	reqRes, err := instant("request_total", queries.requestTotal)
 	if err != nil {
-		return nil, fmt.Errorf("querying request total: %w", err)
+		return nil, err
 	}
-
-	// Execute error total query.
-	provQueries["error_total"] = queries.errorTotal
-	errRes, err := c.QueryRange(ctx, queries.errorTotal, start, now, step)
+	errRes, err := instant("error_total", queries.errorTotal)
 	if err != nil {
-		return nil, fmt.Errorf("querying error total: %w", err)
+		return nil, err
 	}
 
-	// Execute saturation queries (optional, may fail gracefully).
-	provQueries["cpu_utilization"] = queries.cpuUtilization
-	cpuRes, cpuErr := c.QueryRange(ctx, queries.cpuUtilization, start, now, step)
-
-	provQueries["memory_utilization"] = queries.memoryUtilization
-	memRes, memErr := c.QueryRange(ctx, queries.memoryUtilization, start, now, step)
-
-	// Assemble the histogram data.
-	histogram := assembleHistogram(histRes, sumRes, countRes)
-
-	// Assemble request total.
-	requestTotal := assembleCounter(reqRes, "http_requests_total")
-
-	// Assemble error total.
-	errorTotal := assembleCounter(errRes, "http_requests_total")
-
-	// Assemble saturation data.
-	saturation := assembleSaturation(cpuRes, cpuErr, memRes, memErr)
-
-	// Compute coverage ratio: how many data points we actually got vs. expected.
-	expectedPoints := int(lookback / step)
-	actualPoints := countDataPoints(histRes, reqRes, errRes)
-	coverageRatio := 0.0
-	if expectedPoints > 0 {
-		coverageRatio = math.Min(float64(actualPoints)/float64(expectedPoints*3), 1.0)
+	histogram, err := assembleIntervalHistogram(histRes, sumRes, countRes)
+	if err != nil {
+		return nil, err
 	}
+	requestTotal, errorTotal, err := assembleIntervalCounters(reqRes, errRes)
+	if err != nil {
+		return nil, err
+	}
+
+	// Throughput samples must be rates, never lifetime counter values.
+	rateQuery := fmt.Sprintf("sum(rate(%s[%s]))", queries.requestTotal, queryDuration(step))
+	provQueries["request_rate"] = rateQuery
+	rateRes, err := c.QueryRange(ctx, rateQuery, queryStart, now, step)
+	if err != nil {
+		return nil, fmt.Errorf("querying request rate: %w", err)
+	}
+	requestTotal.RateSamples, err = assembleRates(rateRes)
+	if err != nil {
+		return nil, err
+	}
+
+	// Coverage is the minimum fraction of observed time bins for EVERY original
+	// series in each required family. Buckets/codes/instances cannot multiply it.
+	// This is sample-presence coverage, not an inventory or scrape-success proof.
+	coverageRatio := 1.0
+	families := []struct {
+		name, selector string
+		totals         *QueryResult
+	}{
+		{"latency_histogram", queries.histogramBuckets, histRes},
+		{"latency_sum", queries.histogramSum, sumRes},
+		{"latency_count", queries.histogramCount, countRes},
+		{"request_total", queries.requestTotal, reqRes},
+	}
+	for _, family := range families {
+		query := fmt.Sprintf("count_over_time(%s[%s])", family.selector, queryDuration(step))
+		provQueries[family.name+"_coverage"] = query
+		res, err := c.QueryRange(ctx, query, queryStart, now, step)
+		if err != nil {
+			return nil, fmt.Errorf("querying %s coverage: %w", family.name, err)
+		}
+		coverage, err := timeBinCoverage(res, family.totals, queryStart, now, step)
+		if err != nil {
+			return nil, fmt.Errorf("%s coverage: %w", family.name, err)
+		}
+		if coverage < coverageRatio {
+			coverageRatio = coverage
+		}
+	}
+
+	// These raw selectors yield CPU cores and memory bytes, not the ratios
+	// required by the evidence schema. Do not invent utilization without limits.
+	saturation := &SaturationData{Available: false}
 
 	bundle := &EvidenceBundle{
 		SchemaVersion:  1,
@@ -234,84 +266,6 @@ func buildQueries(service, namespace string) serviceQueries {
 	}
 }
 
-func assembleHistogram(bucketRes, sumRes, countRes *QueryResult) HistogramData {
-	hd := HistogramData{
-		MetricName: "http_request_duration_seconds",
-	}
-
-	// Extract buckets: each series has an "le" label.
-	type bucket struct {
-		le    float64
-		count float64
-	}
-	var buckets []bucket
-
-	for _, s := range bucketRes.Data.Result {
-		leStr, ok := s.Metric["le"]
-		if !ok {
-			continue
-		}
-		le, err := strconv.ParseFloat(leStr, 64)
-		if err != nil {
-			continue
-		}
-		// Skip +Inf buckets -- they are captured by total_count instead
-		// and would break JSON marshaling.
-		if math.IsInf(le, 0) {
-			continue
-		}
-		// Use the last value in the series as the cumulative count.
-		if len(s.Values) > 0 {
-			buckets = append(buckets, bucket{le: le, count: s.Values[len(s.Values)-1].Value})
-		}
-	}
-
-	sort.Slice(buckets, func(i, j int) bool { return buckets[i].le < buckets[j].le })
-
-	for _, b := range buckets {
-		hd.Buckets = append(hd.Buckets, HistogramBucket{Le: b.le, Count: b.count})
-	}
-
-	// Extract sum (last value).
-	if len(sumRes.Data.Result) > 0 && len(sumRes.Data.Result[0].Values) > 0 {
-		vals := sumRes.Data.Result[0].Values
-		hd.Sum = vals[len(vals)-1].Value
-	}
-
-	// Extract count (last value).
-	if len(countRes.Data.Result) > 0 && len(countRes.Data.Result[0].Values) > 0 {
-		vals := countRes.Data.Result[0].Values
-		hd.TotalCount = vals[len(vals)-1].Value
-	}
-
-	return hd
-}
-
-func assembleCounter(res *QueryResult, metricName string) CounterData {
-	cd := CounterData{
-		MetricName: metricName,
-	}
-
-	if len(res.Data.Result) == 0 {
-		return cd
-	}
-
-	series := res.Data.Result[0]
-	if len(series.Values) > 0 {
-		cd.Total = series.Values[len(series.Values)-1].Value
-
-		// Include rate samples from the time series.
-		for _, v := range series.Values {
-			cd.RateSamples = append(cd.RateSamples, RateSample{
-				Timestamp: time.Unix(int64(v.Timestamp), 0).UTC().Format(time.RFC3339),
-				Value:     v.Value,
-			})
-		}
-	}
-
-	return cd
-}
-
 func assembleSaturation(cpuRes *QueryResult, cpuErr error, memRes *QueryResult, memErr error) *SaturationData {
 	sat := &SaturationData{Available: false}
 
@@ -351,41 +305,45 @@ func extractSamples(res *QueryResult) []float64 {
 	return samples
 }
 
-func countDataPoints(results ...*QueryResult) int {
-	total := 0
-	for _, r := range results {
-		for _, s := range r.Data.Result {
-			total += len(s.Values)
-		}
+func computeStep(lookback time.Duration) time.Duration {
+	// Evenly partition the complete window into <=500 bins of at least60s.
+	// Millisecond divisibility avoids an unobserved remainder at the window end.
+	bins := int(lookback / time.Minute)
+	if bins > 500 {
+		bins = 500
 	}
-	return total
+	if bins < 1 {
+		bins = 1
+	}
+	for (lookback/time.Millisecond)%time.Duration(bins) != 0 {
+		bins--
+	}
+	return lookback / time.Duration(bins)
 }
 
-func computeStep(lookback time.Duration) time.Duration {
-	// Aim for ~500 data points. Prometheus has a 11,000 point limit per query.
-	step := lookback / 500
-	if step < 60*time.Second {
-		step = 60 * time.Second
+func queryDuration(d time.Duration) string {
+	if d%time.Second == 0 {
+		return formatDuration(d)
 	}
-	return step
+	return strconv.FormatInt(d.Milliseconds(), 10) + "ms"
 }
 
 func formatTime(t time.Time) string {
-	return strconv.FormatFloat(float64(t.Unix()), 'f', -1, 64)
+	return strconv.FormatFloat(float64(t.Unix())+float64(t.Nanosecond())/1e9, 'f', -1, 64)
 }
 
 func formatDuration(d time.Duration) string {
-	// Produce a clean duration string that matches the schema pattern ^[0-9]+[smhd]$.
-	if h := d.Hours(); h >= 24 && int(h)%24 == 0 {
-		return strconv.Itoa(int(h)/24) + "d"
+	// Only select a larger unit when it represents the entire interval exactly.
+	if d%(24*time.Hour) == 0 {
+		return strconv.FormatInt(int64(d/(24*time.Hour)), 10) + "d"
 	}
-	if h := d.Hours(); h == float64(int(h)) {
-		return strconv.Itoa(int(h)) + "h"
+	if d%time.Hour == 0 {
+		return strconv.FormatInt(int64(d/time.Hour), 10) + "h"
 	}
-	if m := d.Minutes(); m == float64(int(m)) {
-		return strconv.Itoa(int(m)) + "m"
+	if d%time.Minute == 0 {
+		return strconv.FormatInt(int64(d/time.Minute), 10) + "m"
 	}
-	return strconv.Itoa(int(d.Seconds())) + "s"
+	return strconv.FormatInt(int64(d/time.Second), 10) + "s"
 }
 
 func truncate(s string, maxLen int) string {

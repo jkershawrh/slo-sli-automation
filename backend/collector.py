@@ -19,20 +19,43 @@ def _name(value):
         raise ValueError("Service and namespace must be Kubernetes names")
 
 
+def configured_lookback():
+    """Operator-selected interval; HTTP callers cannot choose arbitrary query costs."""
+    value = os.environ.get("SLOSCOPE_LOOKBACK", "1h")
+    match = re.fullmatch(r"([1-9][0-9]*)([smhd])", value)
+    if not match:
+        raise ValueError("SLOSCOPE_LOOKBACK must be an integer duration in s/m/h/d")
+    seconds = int(match.group(1)) * {"s": 1, "m": 60, "h": 3600, "d": 86400}[match.group(2)]
+    if not 120 <= seconds <= 30 * 86400:
+        raise ValueError("SLOSCOPE_LOOKBACK must be between 2m and 30d")
+    return value
+
+
+def _normalized_window(value):
+    seconds = int(value[:-1]) * {"s": 1, "m": 60, "h": 3600, "d": 86400}[value[-1]]
+    for unit, multiplier in (("d", 86400), ("h", 3600), ("m", 60)):
+        if seconds % multiplier == 0:
+            return str(seconds // multiplier) + unit
+    return str(seconds) + "s"
+
+
 def collect_evidence(service, namespace):
     _name(service)
     _name(namespace)
+    lookback = configured_lookback()
     root = Path(__file__).resolve().parent.parent
     binary = os.environ.get("SLOSCOPE_BINARY", shutil.which("sloscope") or str(root / "bin/sloscope"))
     with tempfile.TemporaryDirectory(prefix="sloscope-collect-") as directory:
         try:
             subprocess.run([binary, "generate", "--service", service, "--namespace", namespace,
-                            "--lookback", "1h", "--out", directory, "--dry-run"],
+                            "--lookback", lookback, "--out", directory, "--dry-run"],
                            cwd=root, check=True, capture_output=True, timeout=120)
         except (OSError, subprocess.SubprocessError) as exc:
             raise RuntimeError("Configured evidence collector failed") from exc
         evidence = json.loads((Path(directory) / "evidence.json").read_text())
     validate(evidence, "evidence")
+    if evidence["lookback_window"] != _normalized_window(lookback):
+        raise ValueError("Collector returned a different lookback window")
     if evidence["service"] != service or evidence["namespace"] != namespace:
         raise ValueError("Collector returned a different service or namespace")
     if evidence.get("coverage_ratio", 0) < 0.8:

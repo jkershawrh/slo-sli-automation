@@ -90,7 +90,7 @@
               "minimum": 0
             },
             "sample_count": {
-              "type": "integer",
+              "type": "number",
               "minimum": 0
             },
             "source_query": {
@@ -125,11 +125,11 @@
               "minimum": 0
             },
             "error_count": {
-              "type": "integer",
+              "type": "number",
               "minimum": 0
             },
             "total_count": {
-              "type": "integer",
+              "type": "number",
               "minimum": 0
             },
             "source_query": {
