@@ -14,8 +14,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 ROOT = Path(__file__).resolve().parents[2]
-# Allows the staging review to use the changing core without copying its source.
-FIXTURE_ROOT = Path(os.environ.get("SLOSCOPE_TEST_ROOT", str(ROOT)))
+FIXTURE_ROOT = ROOT
 
 
 def fixture(path):
