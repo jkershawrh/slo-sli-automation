@@ -218,6 +218,8 @@ def compute_drift_signal_endpoint(req: DriftSignalRequest):
         }
         result = compute_drift_signal(combined)
         return result
+    except EvidenceConstraintError as exc:
+        raise HTTPException(422, {"status": "abstained", "reason": str(exc)})
     except Exception as e:
         raise HTTPException(400, f"Drift signal computation failed: {e}")
 

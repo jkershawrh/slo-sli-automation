@@ -248,13 +248,13 @@ class TestPropose:
 class TestDriftSignal:
     def test_compute_drift_signal_succeeds(self):
         bl = client.get("/api/v1/fixtures/baseline/checkout-api").json()
-        ev = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments", "mode": "fixture"}).json()
+        ev = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": bl["namespace"], "mode": "fixture"}).json()
         r = client.post("/api/v1/drift/signal", json={"baseline": bl, "live_evidence": ev})
         assert r.status_code == 200
 
     def test_drift_signal_has_indicators(self):
         bl = client.get("/api/v1/fixtures/baseline/checkout-api").json()
-        ev = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments", "mode": "fixture"}).json()
+        ev = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": bl["namespace"], "mode": "fixture"}).json()
         r = client.post("/api/v1/drift/signal", json={"baseline": bl, "live_evidence": ev})
         data = r.json()
         assert "indicators" in data
@@ -264,7 +264,7 @@ class TestDriftSignal:
 
     def test_drift_signal_has_per_indicator_fields(self):
         bl = client.get("/api/v1/fixtures/baseline/checkout-api").json()
-        ev = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments", "mode": "fixture"}).json()
+        ev = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": bl["namespace"], "mode": "fixture"}).json()
         r = client.post("/api/v1/drift/signal", json={"baseline": bl, "live_evidence": ev})
         ind = r.json()["indicators"][0]
         for field in ["name", "live_value", "baseline_value", "abs_deviation", "direction", "band_breach", "first_pass_class"]:
@@ -272,9 +272,11 @@ class TestDriftSignal:
 
     def test_drift_signal_is_deterministic(self):
         bl = client.get("/api/v1/fixtures/baseline/checkout-api").json()
-        ev = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments", "mode": "fixture"}).json()
-        r1 = client.post("/api/v1/drift/signal", json={"baseline": bl, "live_evidence": ev}).json()
-        r2 = client.post("/api/v1/drift/signal", json={"baseline": bl, "live_evidence": ev}).json()
+        ev = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": bl["namespace"], "mode": "fixture"}).json()
+        first = client.post("/api/v1/drift/signal", json={"baseline": bl, "live_evidence": ev})
+        second = client.post("/api/v1/drift/signal", json={"baseline": bl, "live_evidence": ev})
+        assert first.status_code == second.status_code == 200
+        r1, r2 = first.json(), second.json()
         assert json.dumps(r1, sort_keys=True) == json.dumps(r2, sort_keys=True)
 
 
@@ -544,7 +546,7 @@ class TestFullPipeline:
             bl = client.get("/api/v1/fixtures/baseline/checkout-api").json()
 
             # Load live evidence
-            ev = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments", "mode": "fixture"}).json()
+            ev = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": bl["namespace"], "mode": "fixture"}).json()
 
             # Compute drift (deterministic)
             ds = client.post("/api/v1/drift/signal", json={"baseline": bl, "live_evidence": ev}).json()

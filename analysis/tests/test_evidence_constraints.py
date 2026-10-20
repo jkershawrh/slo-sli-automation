@@ -90,3 +90,14 @@ def test_alternate_numeric_notation_cannot_hide_fabricated_measurements(citation
     report=load('evals/recorded/drift/latency_regression_response.json')
     report['likely_cause']='Observed '+citation+' milliseconds.'
     assert check_grounding(report,signal)
+
+
+@pytest.mark.parametrize("identity", ["service", "namespace"])
+def test_drift_rejects_cross_identity_observations(identity):
+    from baseline import compute_baseline
+    from deviation import compute_drift_signal
+    evidence = json.loads((ROOT.parent / "testdata/evidence_checkout_api.json").read_text())
+    reference = compute_baseline(evidence)
+    evidence[identity] = "different"
+    with pytest.raises(EvidenceConstraintError, match="identities do not match"):
+        compute_drift_signal({"baseline": reference, "live_evidence": evidence})

@@ -75,3 +75,14 @@ def test_explicit_evidence_fixture_is_labeled():
         assert response.status_code == 200
         assert response.headers['X-SLOscope-Mode'] == 'fixture'
         assert response.headers['X-SLOscope-Input-SHA256']
+
+
+def test_http_drift_abstains_on_cross_namespace_reference():
+    from baseline import compute_baseline
+    evidence = json.loads((ROOT / "testdata/evidence_checkout_api.json").read_text())
+    reference = compute_baseline(evidence)
+    evidence["namespace"] = "different"
+    with TestClient(server.app) as client:
+        response = client.post("/api/v1/drift/signal", json={"baseline": reference, "live_evidence": evidence})
+        assert response.status_code == 422
+        assert response.json()["detail"]["status"] == "abstained"

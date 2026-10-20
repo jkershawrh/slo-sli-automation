@@ -132,6 +132,10 @@ def compute_drift_signal(combined_input):
     """
     live_evidence = combined_input["live_evidence"]
     baseline = combined_input["baseline"]
+    from evidence_constraints import EvidenceConstraintError
+    for identity in ("service", "namespace"):
+        if not baseline.get(identity) or baseline.get(identity) != live_evidence.get(identity):
+            raise EvidenceConstraintError("Baseline and evidence {} identities do not match".format(identity))
 
     # Compute live indicators using the same algorithm as baseline computation
     live_baseline = compute_baseline(live_evidence)
