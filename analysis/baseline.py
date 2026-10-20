@@ -220,6 +220,7 @@ def compute_baseline(evidence):
         }
 
     validate(baseline, "baseline")
+    baseline["indicators"]["latency"]["histogram_buckets_seconds"] = [b["le"] for b in buckets if isinstance(b["le"], (int, float))]
     return baseline
 
 

@@ -68,7 +68,7 @@ def check_consistency(proposal, baseline):
         # Skip checks for boundary values where improvement is impossible
         # e.g., availability = 1.0 (can't go above 100%), error_rate = 0 (can't go below 0)
         op = EXPECTED_OPS.get(sli_type, "lte")
-        at_boundary = (op == "gte" and observed >= 1.0) or (op == "lte" and observed <= 0)
+        at_boundary = (sli_type == "availability" and observed >= 1.0) or (op == "lte" and observed <= 0)
         if at_boundary:
             continue
 

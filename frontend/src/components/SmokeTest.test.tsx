@@ -29,10 +29,9 @@ describe('Header', () => {
     )).toBeInTheDocument()
   })
 
-  it('renders both logos', () => {
+  it('renders the Red Hat logo', () => {
     render(<Header />)
-    const imgs = screen.getAllByRole('img')
-    expect(imgs.length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByRole('img', { name: 'Red Hat' })).toBeInTheDocument()
   })
 })
 

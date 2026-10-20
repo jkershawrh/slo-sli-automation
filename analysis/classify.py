@@ -174,6 +174,8 @@ RESPONSE SCHEMA:
 }
 """
 
+from evidence_constraints import classification_constraints, numeric_claim_errors
+
 MAX_RETRIES = 3
 
 
@@ -183,7 +185,7 @@ def create_client():
     api_key = os.environ.get("LLM_API_KEY", "")
     if not base_url or not api_key:
         raise RuntimeError("LLM_BASE_URL and LLM_API_KEY must be set")
-    return OpenAI(base_url=base_url, api_key=api_key)
+    return OpenAI(base_url=base_url, api_key=api_key, timeout=30.0)
 
 
 def get_model():
@@ -222,6 +224,7 @@ def check_actuation(report):
     for rec in report.get("recommendations", []):
         text_fields.append(rec.get("action", ""))
         text_fields.append(rec.get("rationale", ""))
+        text_fields.extend(str(value) for value in rec.get("remediation_plan", {}).values())
 
     combined = " ".join(text_fields)
 
@@ -291,37 +294,17 @@ def check_grounding(report, drift_signal):
     """Check that every number cited in the report exists in the signals.
 
     Returns a list of error strings (empty if grounded). Skips numbers
-    that are part of metric names (p99), percentages (50%), multipliers
-    (4x), or time references (24h).
+    that are part of metric names or proposed review intervals. Percentages,
+    multipliers and remediation-plan numeric claims are checked.
     """
     signal_values = extract_signal_values(drift_signal)
-    errors = []
-
-    text_fields = [report.get("likely_cause", "")]
+    signal_values.update(v * 100 for v in list(signal_values) if abs(v) <= 1)
+    signal_values.update({0.0, 1.0})  # no breach / tolerance boundary policy
+    texts = [report.get("likely_cause", "")]
     for rec in report.get("recommendations", []):
-        text_fields.append(rec.get("rationale", ""))
-
-    combined = " ".join(text_fields)
-    cited = _extract_cited_numbers(combined)
-
-    for num, num_str in cited:
-        grounded = False
-        for sv in signal_values:
-            if sv == 0:
-                if abs(num) < 1e-10:
-                    grounded = True
-                    break
-                continue
-            if abs(num - sv) / max(abs(sv), 1e-10) < 0.02:
-                grounded = True
-                break
-
-        if not grounded:
-            errors.append(
-                "Number {} not found in drift signals".format(num_str)
-            )
-
-    return errors
+        texts.extend([rec.get("action", ""), rec.get("rationale", "")])
+        texts.extend(str(value) for value in rec.get("remediation_plan", {}).values())
+    return numeric_claim_errors(texts, signal_values)
 
 
 def check_class_consistency(report, drift_signal):
@@ -433,6 +416,7 @@ def classify(drift_signal, client=None, model=None, context_type=None):
         RuntimeError: If the LLM fails to produce a valid report after retries.
     """
     validate(drift_signal, "drift-signal")
+    constraints = classification_constraints(drift_signal)
 
     if client is None:
         client = create_client()
@@ -516,6 +500,8 @@ def classify(drift_signal, client=None, model=None, context_type=None):
 
         # Consistency checks
         consistency_errors = []
+        if report.get("service") != drift_signal["service"]:
+            consistency_errors.append("Report service does not match measured evidence")
 
         # Class consistency with dominant signal
         consistency_errors.extend(
@@ -555,6 +541,7 @@ def classify(drift_signal, client=None, model=None, context_type=None):
                 "Last error: {}".format(MAX_RETRIES, last_error)
             )
 
+        report["evidence_constraint"] = constraints
         return report
 
     raise RuntimeError(

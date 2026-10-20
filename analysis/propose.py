@@ -10,6 +10,7 @@ from openai import OpenAI
 from schemas.validate import validate, is_valid
 from serialize import serialize
 from consistency import check_consistency
+from evidence_constraints import proposal_constraints, proposal_claim_errors, require_coverage
 
 
 SYSTEM_PROMPT = """\
@@ -26,6 +27,10 @@ Each SLI type has a "direction of goodness" that determines the comparison opera
 - availability: HIGHER is better. target_op = "gte". Target means "availability ratio at or above this value".
 - throughput: HIGHER is better. target_op = "gte". Target means "requests per second at or above this value".
 - saturation: LOWER is better. target_op = "lte". Target means "resource utilization at or below this value".
+
+When latency.histogram_buckets_seconds is provided, choose the latency sla_target from one
+of those measured bucket boundaries (convert seconds to milliseconds). Never invent a bucket.
+Targets and causal rationale always require human review.
 
 You MUST set target_op correctly for each SLO. This field is required.
 
@@ -119,6 +124,7 @@ Respond ONLY with valid JSON. No markdown, no explanation outside the JSON.
   "slos": [
     {
       "sli_name": "string",
+      "evidence_metric": "cpu_mean_ratio or memory_mean_ratio (required for saturation only)",
       "sli_type": "latency|availability|throughput|saturation|error_rate",
       "sli_definition": "description of the SLI",
       "slo_target": number,
@@ -154,7 +160,7 @@ def create_client():
     api_key = os.environ.get("LLM_API_KEY", "")
     if not base_url or not api_key:
         raise RuntimeError("LLM_BASE_URL and LLM_API_KEY must be set")
-    return OpenAI(base_url=base_url, api_key=api_key)
+    return OpenAI(base_url=base_url, api_key=api_key, timeout=30.0)
 
 
 def get_model():
@@ -182,6 +188,7 @@ def propose(baseline, client=None, model=None, maturity=None, context_type=None)
         RuntimeError: If the LLM fails to produce a valid proposal after retries.
     """
     validate(baseline, "baseline")
+    require_coverage(baseline)
 
     if client is None:
         client = create_client()
@@ -268,6 +275,8 @@ def propose(baseline, client=None, model=None, maturity=None, context_type=None)
 
         # Consistency check
         consistency_errors = check_consistency(proposal, baseline)
+        consistency_errors.extend(proposal_constraints(proposal, baseline))
+        consistency_errors.extend(proposal_claim_errors(proposal, baseline))
         if consistency_errors:
             last_error = "Consistency check failed: {}".format(
                 "; ".join(consistency_errors)
@@ -291,6 +300,9 @@ def propose(baseline, client=None, model=None, maturity=None, context_type=None)
                 )
             )
 
+        for slo in proposal["slos"]:
+            slo["requires_review"] = True
+            slo.setdefault("review_reason", "Proposed target and rationale require human review")
         return proposal
 
     raise RuntimeError(

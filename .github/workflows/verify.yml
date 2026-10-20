@@ -26,7 +26,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install promtool
         run: |
@@ -35,10 +35,16 @@ jobs:
           promtool --version
 
       - name: Install Python deps
-        run: pip install -r requirements.txt -r backend/requirements.txt
+        run: pip install --require-hashes -r requirements.lock
 
       - name: Install frontend deps
         run: cd frontend && npm ci
+
+      - name: Install dashboard deps
+        run: cd dashboard && npm ci
+
+      - name: Build dashboard
+        run: cd dashboard && npm run build
 
       - name: Build Go binary
         run: make build
@@ -47,7 +53,7 @@ jobs:
         run: go test ./... -count=1
 
       - name: Run Python tests
-        run: python -m pytest analysis/tests/ backend/test_server.py -q
+        run: python -m pytest analysis/tests/ backend/ -q
 
       - name: Run frontend tests
         run: cd frontend && npx vitest run

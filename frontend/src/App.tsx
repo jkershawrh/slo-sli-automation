@@ -45,6 +45,7 @@ export default function App() {
   const [baselineStatus, setBaselineStatus] = useState<Status>('idle');
   const [proposalStatus, setProposalStatus] = useState<Status>('idle');
   const [renderStatus, setRenderStatus] = useState<Status>('idle');
+  const [renderError, setRenderError] = useState('');
   const [driftStatus, setDriftStatus] = useState<Status>('idle');
   const [classifyStatus, setClassifyStatus] = useState<Status>('idle');
 
@@ -91,14 +92,16 @@ export default function App() {
   const doRenderArtifacts = useCallback(async () => {
     if (!proposal) return;
     setRenderStatus('running');
+    setRenderError('');
     try {
-      const call = await api.renderArtifacts(proposal);
+      const call = await api.renderArtifacts(proposal, 'checkout-api', 'payments', evidence ?? undefined);
       setRenderOutput(call.response.data);
       setRenderStatus('done');
-    } catch {
+    } catch (error) {
+      setRenderError(error instanceof Error ? error.message : 'Export requires review');
       setRenderStatus('error');
     }
-  }, [proposal]);
+  }, [proposal, evidence]);
 
   const doDetectDrift = useCallback(async () => {
     if (!baseline) return;
@@ -679,6 +682,7 @@ export default function App() {
             <StepCard num={4} title="Render Artifacts" status={renderStatus}
               onRun={proposalStatus === 'done' ? doRenderArtifacts : undefined}
               buttonLabel="Render Artifacts">
+              {renderError && <p role="alert">{renderError}. Review the proposed threshold before exporting.</p>}
               {renderStatus === 'idle' && proposalStatus !== 'done' && (
                 <div style={{ fontSize: 13, color: 'var(--text-disabled)', fontStyle: 'italic' }}>
                   Complete Act 3 first to propose SLOs.

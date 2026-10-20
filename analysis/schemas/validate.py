@@ -18,6 +18,8 @@ def load_schema(name):
 
 def validate(data, schema_name):
     """Validate data against a named schema. Raises jsonschema.ValidationError on failure."""
+    from evidence_constraints import finite_artifact
+    finite_artifact(data)
     schema = load_schema(schema_name)
     jsonschema.validate(instance=data, schema=schema)
 

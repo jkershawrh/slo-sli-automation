@@ -37,22 +37,12 @@ spec:
               for svc in $SERVICES; do
                 NS="${svc}"
                 echo "=== Collecting evidence for $svc/$NS ==="
-                /usr/local/bin/sloscope generate \
-                  --service "$svc" --namespace "$NS" \
-                  --lookback 30d --type service --maturity growing \
-                  --out "/artifacts/$svc" 2>&1 || echo "WARN: generate failed for $svc"
-
-                if [ -f "/artifacts/$svc/baseline.json" ]; then
-                  echo "=== Detecting drift for $svc ==="
-                  /usr/local/bin/sloscope drift \
-                    --service "$svc" \
-                    --baseline "/artifacts/$svc/baseline.json" \
-                    --window 1h --type service \
-                    --out "/artifacts/$svc" 2>&1 || echo "WARN: drift failed for $svc"
-                fi
+                python -m backend.collector --service "$svc" --namespace "$NS"
               done
               echo "=== Collection complete ==="
             env:
+            - name: SLOSCOPE_STORE_DIR
+              value: "/artifacts"
             - name: SLOSCOPE_SERVICES
               value: "triforce"
             envFrom:

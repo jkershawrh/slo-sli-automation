@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Literal
 
 # Add analysis directory to path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -24,6 +24,7 @@ DRIFT_RECORDED_DIR = RECORDED_DIR / "drift"
 
 sys.path.insert(0, str(ANALYSIS_DIR))
 
+from evidence_constraints import EvidenceConstraintError, classification_constraints, input_digest
 from baseline import compute_baseline
 from schemas.validate import validate, is_valid
 from serialize import serialize
@@ -78,6 +79,7 @@ class EvidenceRequest(BaseModel):
     service: str = "checkout-api"
     namespace: str = "payments"
     fixture: Optional[str] = None
+    mode: Literal["live", "fixture"] = "live"
 
 class BaselineRequest(BaseModel):
     evidence: dict
@@ -86,6 +88,7 @@ class ProposeRequest(BaseModel):
     baseline: dict
     maturity: str = "growing"
     context_type: str = "service"
+    mode: Literal["live", "fixture"] = "live"
 
 class DriftSignalRequest(BaseModel):
     baseline: dict
@@ -94,11 +97,13 @@ class DriftSignalRequest(BaseModel):
 class DriftClassifyRequest(BaseModel):
     drift_signal: dict
     context_type: str = "service"
+    mode: Literal["live", "fixture"] = "live"
 
 class RenderRequest(BaseModel):
     proposal: dict
     service: str = "checkout-api"
     namespace: str = "payments"
+    evidence: Optional[dict] = None
 
 
 # --- Fixture loading ---
@@ -134,7 +139,15 @@ def health():
 
 @app.post("/api/v1/evidence", tags=["SLO Generation"], summary="Collect evidence")
 def collect_evidence(req: EvidenceRequest):
-    """Load demo fixture evidence and patch service/namespace for the request."""
+    """Collect live evidence, or load a fixture only on explicit request."""
+    if req.mode != "fixture":
+        from collector import collect_evidence
+        try:
+            return collect_evidence(req.service, req.namespace)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc))
+        except RuntimeError:
+            raise HTTPException(503, "Live evidence collection failed; inspect server configuration")
     fixture_key = req.fixture or req.service
     fixture_path = EVIDENCE_FIXTURES.get(fixture_key)
     if not fixture_path or not fixture_path.exists():
@@ -159,13 +172,13 @@ def compute_baseline_endpoint(req: BaselineRequest):
 
 @app.post("/api/v1/propose", tags=["SLO Generation"], summary="Propose SLOs")
 def propose_slos(req: ProposeRequest):
-    """Generate SLO/SLA proposals grounded in the baseline. Falls back to recorded responses when LLM is not configured."""
+    """Generate a live proposal or an explicitly labeled recorded demonstration."""
     # Check if LLM is configured
     llm_base = os.environ.get("LLM_BASE_URL", "")
     llm_key = os.environ.get("LLM_API_KEY", "")
 
-    if not llm_base or not llm_key:
-        # Fall back to recorded response
+    if req.mode == "fixture":
+        # Explicit recorded demonstration; never claimed as evidence-bound inference.
         service = req.baseline.get("service", "checkout-api")
         recorded_map = {
             "checkout-api": RECORDED_DIR / "web_api_baseline_response.json",
@@ -174,9 +187,11 @@ def propose_slos(req: ProposeRequest):
         }
         path = recorded_map.get(service)
         if path and path.exists():
-            return load_fixture(path)
+            return JSONResponse(load_fixture(path), headers={"X-SLOscope-Mode": "fixture", "X-SLOscope-Input-SHA256": input_digest(req.baseline)})
         raise HTTPException(503, "LLM not configured and no recorded response available")
 
+    if not llm_base or not llm_key:
+        raise HTTPException(503, "Live mode requires LLM configuration; fixture mode must be requested explicitly")
     try:
         from propose import propose
         result = propose(
@@ -184,9 +199,11 @@ def propose_slos(req: ProposeRequest):
             maturity=req.maturity,
             context_type=req.context_type,
         )
-        return result
-    except Exception as e:
-        raise HTTPException(500, f"Proposal failed: {e}")
+        return JSONResponse(result, headers={"X-SLOscope-Mode": "live", "X-SLOscope-Input-SHA256": input_digest(req.baseline)})
+    except EvidenceConstraintError as exc:
+        raise HTTPException(422, {"status": "abstained", "reason": str(exc)})
+    except Exception:
+        raise HTTPException(502, "Proposal failed validation or model execution; no recorded fallback used")
 
 
 @app.post("/api/v1/drift/signal", tags=["Drift Detection"], summary="Compute drift signal")
@@ -206,25 +223,33 @@ def compute_drift_signal_endpoint(req: DriftSignalRequest):
 
 @app.post("/api/v1/drift/classify", tags=["Drift Detection"], summary="Classify drift")
 def classify_drift(req: DriftClassifyRequest):
-    """Classify drift and generate remediation recommendations. Falls back to recorded responses when LLM is not configured."""
+    """Classify measured drift, abstaining when evidence constraints fail."""
     llm_base = os.environ.get("LLM_BASE_URL", "")
     llm_key = os.environ.get("LLM_API_KEY", "")
 
-    if not llm_base or not llm_key:
-        # Fall back to recorded response based on dominant signal class
+    if req.mode == "fixture":
+        # Explicitly requested demonstration, independent of live model configuration.
         from classify import normalized_report_class
         dominant_class = normalized_report_class(req.drift_signal) or "no_significant_drift"
         recorded_path = DRIFT_RECORDED_DIR / f"{dominant_class}_response.json"
         if recorded_path.exists():
-            return load_fixture(recorded_path)
+            return JSONResponse(load_fixture(recorded_path), headers={"X-SLOscope-Mode": "fixture", "X-SLOscope-Input-SHA256": input_digest(req.drift_signal)})
         raise HTTPException(503, "LLM not configured and no recorded response available")
 
     try:
+        classification_constraints(req.drift_signal)
+    except Exception as exc:
+        raise HTTPException(422, {"status": "abstained", "reason": str(exc)})
+    if not llm_base or not llm_key:
+        raise HTTPException(503, "Live mode requires LLM configuration; fixture mode must be requested explicitly")
+    try:
         from classify import classify
         result = classify(req.drift_signal, context_type=req.context_type)
-        return result
-    except Exception as e:
-        raise HTTPException(500, f"Classification failed: {e}")
+        return JSONResponse(result, headers={"X-SLOscope-Mode": "live", "X-SLOscope-Input-SHA256": input_digest(req.drift_signal)})
+    except EvidenceConstraintError as exc:
+        raise HTTPException(422, {"status": "abstained", "reason": str(exc)})
+    except Exception:
+        raise HTTPException(502, "Classification failed validation or model execution; no recorded fallback used")
 
 
 @app.post("/api/v1/render", tags=["SLO Generation"], summary="Render artifacts")
@@ -234,7 +259,25 @@ def render_artifacts(req: RenderRequest):
     service = req.service
     namespace = req.namespace
 
-    # Simple Python-side rendering for the demo
+    try:
+        validate(proposal, "proposal")
+        if proposal.get("service") != service:
+            raise ValueError("Proposal service does not match render request")
+        for slo in proposal.get("slos", []):
+            if slo["sli_type"] in ("saturation", "throughput"):
+                raise ValueError("This API exporter does not yet support the requested metric binding")
+            if slo["sli_type"] == "latency":
+                if not req.evidence:
+                    raise ValueError("Latency export requires histogram evidence")
+                validate(req.evidence, "evidence")
+                if req.evidence["service"] != service or req.evidence["namespace"] != namespace:
+                    raise ValueError("Histogram evidence identity does not match render request")
+                buckets = req.evidence.get("series", {}).get("latency_histogram", {}).get("buckets", [])
+                if slo["sla_target"] / 1000 not in [b["le"] for b in buckets]:
+                    raise ValueError("Latency threshold is not an observed histogram bucket; revise the proposal")
+    except Exception as exc:
+        raise HTTPException(422, str(exc))
+    # Preview artifacts require human review and consumer-specific validation.
     openslo = render_openslo(proposal)
     prom_rules = render_prom_rules(proposal, service, namespace)
 
@@ -498,6 +541,22 @@ def get_service_budget(service: str):
 def get_service_recommendations(service: str):
     """Active remediation recommendations from the latest drift report."""
     return store.get_recommendations(service)
+
+
+class LiveCollectionRequest(BaseModel):
+    service: str
+    namespace: str
+
+
+@app.post("/api/v2/collect", tags=["Dashboard"])
+def collect_live(req: LiveCollectionRequest):
+    from collector import collect_and_store
+    try:
+        return collect_and_store(req.service, req.namespace, store)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    except RuntimeError:
+        raise HTTPException(503, "Live collection failed; the reference baseline was not replaced")
 
 
 # --- Static file serving (production: serve built frontends) ---
