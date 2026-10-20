@@ -101,3 +101,18 @@ def test_drift_rejects_cross_identity_observations(identity):
     evidence[identity] = "different"
     with pytest.raises(EvidenceConstraintError, match="identities do not match"):
         compute_drift_signal({"baseline": reference, "live_evidence": evidence})
+
+
+def test_proposal_generation_context_uses_measured_units_and_only_admissible_buckets():
+    from propose import proposal_evidence_context
+    baseline = load('evals/fixtures/web_api_baseline.json')
+    latency = baseline['indicators']['latency']
+    latency.update({'p99_ms': 49.25, 'stddev_ms': 10, 'histogram_buckets_seconds': [0.01, 0.025, 0.05, 0.1, 0.5]})
+    ctx = proposal_evidence_context(baseline)
+    assert ctx['observations']['latency'] == {'observed_value': 49.25, 'stddev': 10, 'unit': 'ms'}
+    assert ctx['latency_sla_candidates_ms'] == [50.0]
+    # A bucket vocabulary that cannot accommodate headroom must not invent a boundary.
+    latency['histogram_buckets_seconds'] = [0.01, 0.025]
+    assert proposal_evidence_context(baseline)['latency_sla_candidates_ms'] == []
+    del latency['histogram_buckets_seconds']
+    assert 'latency_sla_candidates_ms' not in proposal_evidence_context(baseline)
