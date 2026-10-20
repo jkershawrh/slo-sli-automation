@@ -1,0 +1,22 @@
+name: MCP protocol
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  stdio-protocol:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install optional MCP integration
+        run: python -m pip install -r requirements.txt -r requirements-mcp.txt pytest pytest-asyncio
+      - name: Exercise a real stdio MCP client
+        run: python -m pytest tests/mcp -q

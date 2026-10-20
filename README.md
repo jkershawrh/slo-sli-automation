@@ -4,6 +4,8 @@ An open framework for replacing guesswork-driven SLO targets with defensible obj
 
 This repository supplies the reusable engine for the **SLOscope lab**. See the [lab plan](docs/lab-plan.md),
 [evidence constraints](docs/evidence-constraints.md) and [unpublished-work reconciliation](docs/unpublished-reconciliation.md).
+An optional [local MCP integration](docs/MCP.md) exposes deterministic evidence review to compatible assistants;
+it does not collect telemetry, call models or execute remediation.
 
 Licensed under [Apache-2.0](LICENSE).
 
