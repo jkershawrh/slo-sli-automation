@@ -4,8 +4,9 @@ package prom
 
 // QueryResult represents the top-level response from the Prometheus HTTP API.
 type QueryResult struct {
-	Status string    `json:"status"`
-	Data   QueryData `json:"data"`
+	Status   string    `json:"status"`
+	Warnings []string  `json:"warnings,omitempty"`
+	Data     QueryData `json:"data"`
 }
 
 // QueryData holds the result type and the series data returned by a query.

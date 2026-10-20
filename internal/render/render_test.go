@@ -10,6 +10,8 @@ import (
 	"testing"
 )
 
+var renderTestEvidence = json.RawMessage(`{"service":"checkout-api","namespace":"payments","series":{"latency_histogram":{"buckets":[{"le":0.595,"count":100},{"le":"+Inf","count":101}]}}}`)
+
 const testProposalPath = "../../analysis/evals/recorded/web_api_baseline_response.json"
 
 func loadTestProposal(t *testing.T) json.RawMessage {
@@ -168,7 +170,7 @@ func TestRenderOpenSLO_InvalidJSON_ReturnsError(t *testing.T) {
 
 func TestRenderPrometheusRules_HasGroupsTopLevel(t *testing.T) {
 	proposal := loadTestProposal(t)
-	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments")
+	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments", renderTestEvidence)
 	if err != nil {
 		t.Fatalf("RenderPrometheusRules error: %v", err)
 	}
@@ -179,7 +181,7 @@ func TestRenderPrometheusRules_HasGroupsTopLevel(t *testing.T) {
 
 func TestRenderPrometheusRules_ContainsRecordingRules(t *testing.T) {
 	proposal := loadTestProposal(t)
-	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments")
+	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments", renderTestEvidence)
 	if err != nil {
 		t.Fatalf("RenderPrometheusRules error: %v", err)
 	}
@@ -194,7 +196,7 @@ func TestRenderPrometheusRules_ContainsRecordingRules(t *testing.T) {
 
 func TestRenderPrometheusRules_ContainsAlertingRulesWithSeverity(t *testing.T) {
 	proposal := loadTestProposal(t)
-	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments")
+	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments", renderTestEvidence)
 	if err != nil {
 		t.Fatalf("RenderPrometheusRules error: %v", err)
 	}
@@ -208,7 +210,7 @@ func TestRenderPrometheusRules_ContainsAlertingRulesWithSeverity(t *testing.T) {
 
 func TestRenderPrometheusRules_CorrectBurnRateThresholds(t *testing.T) {
 	proposal := loadTestProposal(t)
-	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments")
+	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments", renderTestEvidence)
 	if err != nil {
 		t.Fatalf("RenderPrometheusRules error: %v", err)
 	}
@@ -223,7 +225,7 @@ func TestRenderPrometheusRules_CorrectBurnRateThresholds(t *testing.T) {
 
 func TestRenderPrometheusRules_MultiWindowConditions(t *testing.T) {
 	proposal := loadTestProposal(t)
-	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments")
+	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments", renderTestEvidence)
 	if err != nil {
 		t.Fatalf("RenderPrometheusRules error: %v", err)
 	}
@@ -242,7 +244,7 @@ func TestRenderPrometheusRules_MultiWindowConditions(t *testing.T) {
 
 func TestRenderPrometheusRules_RecordingRulesReferenceService(t *testing.T) {
 	proposal := loadTestProposal(t)
-	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments")
+	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments", renderTestEvidence)
 	if err != nil {
 		t.Fatalf("RenderPrometheusRules error: %v", err)
 	}
@@ -271,7 +273,7 @@ func TestRenderPrometheusRules_RejectsInvalidServiceName(t *testing.T) {
 
 func TestRenderPrometheusRules_DefaultNamespace(t *testing.T) {
 	proposal := loadTestProposal(t)
-	out, err := RenderPrometheusRules(proposal, "checkout-api", "")
+	out, err := RenderPrometheusRules(proposal, "checkout-api", "", json.RawMessage(strings.ReplaceAll(string(renderTestEvidence), "payments", "default")))
 	if err != nil {
 		t.Fatalf("RenderPrometheusRules error: %v", err)
 	}
@@ -282,7 +284,7 @@ func TestRenderPrometheusRules_DefaultNamespace(t *testing.T) {
 
 func TestRenderPrometheusRules_UsesAvgOverTimeForRecordedErrorRatio(t *testing.T) {
 	proposal := loadTestProposal(t)
-	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments")
+	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments", renderTestEvidence)
 	if err != nil {
 		t.Fatalf("RenderPrometheusRules error: %v", err)
 	}
@@ -300,7 +302,7 @@ func TestRenderPrometheusRules_PromtoolCompatible(t *testing.T) {
 	}
 
 	proposal := loadTestProposal(t)
-	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments")
+	out, err := RenderPrometheusRules(proposal, "checkout-api", "payments", renderTestEvidence)
 	if err != nil {
 		t.Fatalf("RenderPrometheusRules error: %v", err)
 	}
@@ -490,5 +492,19 @@ func TestRenderAuditBundle_Deterministic(t *testing.T) {
 
 	if string(result1) != string(result2) {
 		t.Error("RenderAuditBundle is not deterministic: two calls with same input produced different output")
+	}
+}
+
+func TestRenderPrometheusRulesRejectsUnobservedBucket(t *testing.T) {
+	proposal := loadTestProposal(t)
+	evidence, err := os.ReadFile("../../testdata/evidence_checkout_api.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RenderPrometheusRules(proposal, "checkout-api", "payments", evidence); err == nil {
+		t.Fatal("unobserved 0.595 bucket must be rejected")
+	}
+	if _, err := RenderPrometheusRules(proposal, "checkout-api", "payments"); err == nil {
+		t.Fatal("missing evidence must be rejected")
 	}
 }

@@ -9,7 +9,8 @@ from openai import OpenAI
 
 from schemas.validate import validate, is_valid
 from serialize import serialize
-from consistency import check_consistency
+from consistency import check_consistency, _get_observed_and_stddev, MAX_LOOSENESS_STDDEV
+from evidence_constraints import proposal_constraints, proposal_claim_errors, require_coverage
 
 
 SYSTEM_PROMPT = """\
@@ -26,6 +27,15 @@ Each SLI type has a "direction of goodness" that determines the comparison opera
 - availability: HIGHER is better. target_op = "gte". Target means "availability ratio at or above this value".
 - throughput: HIGHER is better. target_op = "gte". Target means "requests per second at or above this value".
 - saturation: LOWER is better. target_op = "lte". Target means "resource utilization at or below this value".
+
+When latency.histogram_buckets_seconds is provided, choose the latency sla_target from one
+of those measured bucket boundaries (convert seconds to milliseconds). Never invent a bucket.
+The measured bucket rule overrides generic SLA margin formulas. When the evidence-specific
+context lists latency_sla_candidates_ms, select only from that list; do not round or
+interpolate a new boundary. If that list is empty, omit the unsupported latency proposal.
+Use the observed values in their declared units in headroom.observed_value. Cite raw
+measured values in prose; do not invent additional thresholds or derived numeric claims.
+Targets and causal rationale always require human review.
 
 You MUST set target_op correctly for each SLO. This field is required.
 
@@ -119,6 +129,7 @@ Respond ONLY with valid JSON. No markdown, no explanation outside the JSON.
   "slos": [
     {
       "sli_name": "string",
+      "evidence_metric": "cpu_mean_ratio or memory_mean_ratio (required for saturation only)",
       "sli_type": "latency|availability|throughput|saturation|error_rate",
       "sli_definition": "description of the SLI",
       "slo_target": number,
@@ -154,7 +165,7 @@ def create_client():
     api_key = os.environ.get("LLM_API_KEY", "")
     if not base_url or not api_key:
         raise RuntimeError("LLM_BASE_URL and LLM_API_KEY must be set")
-    return OpenAI(base_url=base_url, api_key=api_key)
+    return OpenAI(base_url=base_url, api_key=api_key, timeout=30.0)
 
 
 def get_model():
@@ -163,6 +174,31 @@ def get_model():
     if not model:
         raise RuntimeError("LLM_MODEL must be set")
     return model
+
+
+def proposal_evidence_context(baseline):
+    """Give the model the same measured units and bucket policy enforced after generation.
+
+    These are constraints for generation, never a replacement for output validation.
+    """
+    indicators = baseline["indicators"]
+    context = {"observations": {}}
+    units = {"latency": "ms", "availability": "ratio", "error_rate": "ratio", "throughput": "rps"}
+    for kind, unit in units.items():
+        observed, stddev = _get_observed_and_stddev(kind, indicators)
+        if observed is not None:
+            context["observations"][kind] = {"observed_value": observed, "stddev": stddev, "unit": unit}
+    latency = indicators.get("latency", {})
+    if "histogram_buckets_seconds" in latency:
+        observed, stddev = _get_observed_and_stddev("latency", indicators)
+        candidates = []
+        if observed is not None:
+            for boundary in latency["histogram_buckets_seconds"]:
+                target = boundary * 1000
+                if target > observed and (not stddev or target - observed <= MAX_LOOSENESS_STDDEV * stddev):
+                    candidates.append(target)
+        context["latency_sla_candidates_ms"] = sorted(set(candidates))
+    return context
 
 
 def propose(baseline, client=None, model=None, maturity=None, context_type=None):
@@ -182,6 +218,7 @@ def propose(baseline, client=None, model=None, maturity=None, context_type=None)
         RuntimeError: If the LLM fails to produce a valid proposal after retries.
     """
     validate(baseline, "baseline")
+    require_coverage(baseline)
 
     if client is None:
         client = create_client()
@@ -198,6 +235,8 @@ def propose(baseline, client=None, model=None, maturity=None, context_type=None)
             "content": (
                 f"Generate SLO proposals for this baseline.\n\n"
                 f"Context: {context_type} (maturity: {maturity})\n\n"
+                "Evidence-specific generation constraints (output validation still applies):\n"
+                f"{json.dumps(proposal_evidence_context(baseline), sort_keys=True)}\n\n"
                 f"{json.dumps(baseline, indent=2, sort_keys=True)}"
             ),
         },
@@ -268,6 +307,8 @@ def propose(baseline, client=None, model=None, maturity=None, context_type=None)
 
         # Consistency check
         consistency_errors = check_consistency(proposal, baseline)
+        consistency_errors.extend(proposal_constraints(proposal, baseline))
+        consistency_errors.extend(proposal_claim_errors(proposal, baseline))
         if consistency_errors:
             last_error = "Consistency check failed: {}".format(
                 "; ".join(consistency_errors)
@@ -291,6 +332,9 @@ def propose(baseline, client=None, model=None, maturity=None, context_type=None)
                 )
             )
 
+        for slo in proposal["slos"]:
+            slo["requires_review"] = True
+            slo.setdefault("review_reason", "Proposed target and rationale require human review")
         return proposal
 
     raise RuntimeError(

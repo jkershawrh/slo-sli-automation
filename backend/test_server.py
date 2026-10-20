@@ -60,8 +60,17 @@ class TestHealth:
 # --- Evidence ---
 
 class TestEvidence:
+    def test_live_collection_binds_mode_and_digest_to_returned_evidence(self, monkeypatch):
+        import collector
+        evidence = json.loads((PROJECT_ROOT / "testdata/evidence_checkout_api.json").read_text())
+        monkeypatch.setattr(collector, "collect_evidence", lambda service, namespace: evidence)
+        response = client.post("/api/v1/evidence", json={"service": evidence["service"], "namespace": evidence["namespace"], "mode": "live"})
+        assert response.status_code == 200
+        assert response.headers["X-SLOscope-Mode"] == "live"
+        assert response.headers["X-SLOscope-Input-SHA256"] == server.input_digest(response.json())
+
     def test_collect_evidence_default_service(self):
-        r = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments"})
+        r = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments", "mode": "fixture"})
         assert r.status_code == 200
         data = r.json()
         assert data["service"] == "checkout-api"
@@ -70,32 +79,32 @@ class TestEvidence:
         assert "provenance" in data
 
     def test_collect_evidence_patches_service_name(self):
-        r = client.post("/api/v1/evidence", json={"service": "my-custom-svc", "namespace": "prod", "fixture": "checkout-api"})
+        r = client.post("/api/v1/evidence", json={"service": "my-custom-svc", "namespace": "prod", "fixture": "checkout-api", "mode": "fixture"})
         assert r.status_code == 200
         assert r.json()["service"] == "my-custom-svc"
         assert r.json()["namespace"] == "prod"
 
     def test_collect_evidence_unknown_fixture_returns_404(self):
-        r = client.post("/api/v1/evidence", json={"service": "nonexistent-svc", "namespace": "x", "fixture": "nonexistent"})
+        r = client.post("/api/v1/evidence", json={"service": "nonexistent-svc", "namespace": "x", "fixture": "nonexistent", "mode": "fixture"})
         assert r.status_code == 404
 
     def test_evidence_has_histogram_data(self):
-        r = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments"})
+        r = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments", "mode": "fixture"})
         series = r.json()["series"]
         assert "latency_histogram" in series
         assert len(series["latency_histogram"]["buckets"]) > 0
         assert series["latency_histogram"]["total_count"] > 0
 
     def test_evidence_has_request_total(self):
-        r = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments"})
+        r = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments", "mode": "fixture"})
         assert r.json()["series"]["request_total"]["total"] > 0
 
     def test_evidence_has_error_total(self):
-        r = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments"})
+        r = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments", "mode": "fixture"})
         assert "error_total" in r.json()["series"]
 
     def test_evidence_has_provenance(self):
-        r = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments"})
+        r = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments", "mode": "fixture"})
         prov = r.json()["provenance"]
         assert "prometheus_endpoint" in prov
         assert "query_timestamps" in prov
@@ -105,7 +114,7 @@ class TestEvidence:
 
 class TestBaseline:
     def _get_evidence(self):
-        return client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments"}).json()
+        return client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments", "mode": "fixture"}).json()
 
     def test_compute_baseline_succeeds(self):
         ev = self._get_evidence()
@@ -174,7 +183,7 @@ class TestPropose:
         old_key = os.environ.pop("LLM_API_KEY", None)
         try:
             bl = client.get("/api/v1/fixtures/baseline/checkout-api").json()
-            r = client.post("/api/v1/propose", json={"baseline": bl})
+            r = client.post("/api/v1/propose", json={"baseline": bl, "mode": "fixture"})
             assert r.status_code == 200
             data = r.json()
             assert data["schema_version"] == 3
@@ -191,7 +200,7 @@ class TestPropose:
         old_key = os.environ.pop("LLM_API_KEY", None)
         try:
             bl = client.get("/api/v1/fixtures/baseline/checkout-api").json()
-            r = client.post("/api/v1/propose", json={"baseline": bl})
+            r = client.post("/api/v1/propose", json={"baseline": bl, "mode": "fixture"})
             for slo in r.json()["slos"]:
                 if "headroom" in slo and slo["headroom"]:
                     assert "observed_value" in slo["headroom"]
@@ -205,7 +214,7 @@ class TestPropose:
         old_key = os.environ.pop("LLM_API_KEY", None)
         try:
             bl = client.get("/api/v1/fixtures/baseline/checkout-api").json()
-            r = client.post("/api/v1/propose", json={"baseline": bl, "maturity": "mature", "context_type": "infra"})
+            r = client.post("/api/v1/propose", json={"baseline": bl, "maturity": "mature", "context_type": "infra", "mode": "fixture"})
             assert r.status_code == 200
         finally:
             if old_base: os.environ["LLM_BASE_URL"] = old_base
@@ -248,13 +257,13 @@ class TestPropose:
 class TestDriftSignal:
     def test_compute_drift_signal_succeeds(self):
         bl = client.get("/api/v1/fixtures/baseline/checkout-api").json()
-        ev = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments"}).json()
+        ev = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": bl["namespace"], "mode": "fixture"}).json()
         r = client.post("/api/v1/drift/signal", json={"baseline": bl, "live_evidence": ev})
         assert r.status_code == 200
 
     def test_drift_signal_has_indicators(self):
         bl = client.get("/api/v1/fixtures/baseline/checkout-api").json()
-        ev = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments"}).json()
+        ev = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": bl["namespace"], "mode": "fixture"}).json()
         r = client.post("/api/v1/drift/signal", json={"baseline": bl, "live_evidence": ev})
         data = r.json()
         assert "indicators" in data
@@ -264,7 +273,7 @@ class TestDriftSignal:
 
     def test_drift_signal_has_per_indicator_fields(self):
         bl = client.get("/api/v1/fixtures/baseline/checkout-api").json()
-        ev = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments"}).json()
+        ev = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": bl["namespace"], "mode": "fixture"}).json()
         r = client.post("/api/v1/drift/signal", json={"baseline": bl, "live_evidence": ev})
         ind = r.json()["indicators"][0]
         for field in ["name", "live_value", "baseline_value", "abs_deviation", "direction", "band_breach", "first_pass_class"]:
@@ -272,9 +281,11 @@ class TestDriftSignal:
 
     def test_drift_signal_is_deterministic(self):
         bl = client.get("/api/v1/fixtures/baseline/checkout-api").json()
-        ev = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments"}).json()
-        r1 = client.post("/api/v1/drift/signal", json={"baseline": bl, "live_evidence": ev}).json()
-        r2 = client.post("/api/v1/drift/signal", json={"baseline": bl, "live_evidence": ev}).json()
+        ev = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": bl["namespace"], "mode": "fixture"}).json()
+        first = client.post("/api/v1/drift/signal", json={"baseline": bl, "live_evidence": ev})
+        second = client.post("/api/v1/drift/signal", json={"baseline": bl, "live_evidence": ev})
+        assert first.status_code == second.status_code == 200
+        r1, r2 = first.json(), second.json()
         assert json.dumps(r1, sort_keys=True) == json.dumps(r2, sort_keys=True)
 
 
@@ -286,7 +297,7 @@ class TestDriftClassify:
         old_key = os.environ.pop("LLM_API_KEY", None)
         try:
             ds = client.get("/api/v1/fixtures/drift/latency_regression").json()
-            r = client.post("/api/v1/drift/classify", json={"drift_signal": ds})
+            r = client.post("/api/v1/drift/classify", json={"drift_signal": ds, "mode": "fixture"})
             assert r.status_code == 200
             data = r.json()
             assert data["classification"] == "latency_regression"
@@ -301,7 +312,7 @@ class TestDriftClassify:
         old_key = os.environ.pop("LLM_API_KEY", None)
         try:
             ds = client.get("/api/v1/fixtures/drift/no_significant_drift").json()
-            r = client.post("/api/v1/drift/classify", json={"drift_signal": ds})
+            r = client.post("/api/v1/drift/classify", json={"drift_signal": ds, "mode": "fixture"})
             assert r.status_code == 200
             assert r.json()["classification"] == "no_significant_drift"
         finally:
@@ -314,7 +325,7 @@ class TestDriftClassify:
         try:
             ds = client.get("/api/v1/fixtures/drift/latency_regression").json()
             ds["dominant_signal"]["class"] = "dependency_latency_regression"
-            r = client.post("/api/v1/drift/classify", json={"drift_signal": ds})
+            r = client.post("/api/v1/drift/classify", json={"drift_signal": ds, "mode": "fixture"})
             assert r.status_code == 200
             assert r.json()["classification"] == "latency_regression"
         finally:
@@ -329,7 +340,7 @@ class TestDriftClassify:
             ds["dominant_signal"]["class"] = "error_category_shift"
             ds["indicators"][0]["first_pass_class"] = "error_category_shift"
             ds["indicators"][0]["band_breach"] = True
-            r = client.post("/api/v1/drift/classify", json={"drift_signal": ds})
+            r = client.post("/api/v1/drift/classify", json={"drift_signal": ds, "mode": "fixture"})
             assert r.status_code == 200
             assert r.json()["classification"] == "error_rate_elevation"
         finally:
@@ -373,6 +384,18 @@ class TestDriftClassify:
         assert os.environ["SLOSCOPE_CONTEXT_TYPE"] == "original-context"
 
 
+
+def render_payload(proposal, namespace="payments"):
+    # A human revises the recorded 595ms threshold to an actual 1s fixture bucket.
+    import copy
+    proposal = copy.deepcopy(proposal)
+    for slo in proposal["slos"]:
+        if slo["sli_type"] == "latency":
+            slo["sla_target"] = 1000.0
+    evidence = json.loads((PROJECT_ROOT / "testdata/evidence_checkout_api.json").read_text())
+    evidence["namespace"] = namespace
+    return {"proposal": proposal, "service": "checkout-api", "namespace": namespace, "evidence": evidence}
+
 # --- Render ---
 
 class TestRender:
@@ -381,8 +404,8 @@ class TestRender:
         old_key = os.environ.pop("LLM_API_KEY", None)
         try:
             bl = client.get("/api/v1/fixtures/baseline/checkout-api").json()
-            pr = client.post("/api/v1/propose", json={"baseline": bl}).json()
-            r = client.post("/api/v1/render", json={"proposal": pr, "service": "checkout-api"})
+            pr = client.post("/api/v1/propose", json={"baseline": bl, "mode": "fixture"}).json()
+            r = client.post("/api/v1/render", json=render_payload(pr))
             assert r.status_code == 200
             data = r.json()
             assert "openslo_yaml" in data
@@ -396,8 +419,8 @@ class TestRender:
         old_key = os.environ.pop("LLM_API_KEY", None)
         try:
             bl = client.get("/api/v1/fixtures/baseline/checkout-api").json()
-            pr = client.post("/api/v1/propose", json={"baseline": bl}).json()
-            r = client.post("/api/v1/render", json={"proposal": pr, "service": "checkout-api"})
+            pr = client.post("/api/v1/propose", json={"baseline": bl, "mode": "fixture"}).json()
+            r = client.post("/api/v1/render", json=render_payload(pr))
             yaml_content = r.json()["openslo_yaml"]
             assert "op: lte" in yaml_content or "op: gte" in yaml_content
         finally:
@@ -409,8 +432,8 @@ class TestRender:
         old_key = os.environ.pop("LLM_API_KEY", None)
         try:
             bl = client.get("/api/v1/fixtures/baseline/checkout-api").json()
-            pr = client.post("/api/v1/propose", json={"baseline": bl}).json()
-            r = client.post("/api/v1/render", json={"proposal": pr, "service": "checkout-api"})
+            pr = client.post("/api/v1/propose", json={"baseline": bl, "mode": "fixture"}).json()
+            r = client.post("/api/v1/render", json=render_payload(pr))
             rules = r.json()["prom_rules"]
             assert "groups:" in rules
             assert "record:" in rules
@@ -425,10 +448,10 @@ class TestRender:
         old_key = os.environ.pop("LLM_API_KEY", None)
         try:
             bl = client.get("/api/v1/fixtures/baseline/checkout-api").json()
-            pr = client.post("/api/v1/propose", json={"baseline": bl}).json()
+            pr = client.post("/api/v1/propose", json={"baseline": bl, "mode": "fixture"}).json()
             r = client.post(
                 "/api/v1/render",
-                json={"proposal": pr, "service": "checkout-api", "namespace": "staging"},
+                json=render_payload(pr, "staging"),
             )
             assert r.status_code == 200
             assert 'namespace="staging"' in r.json()["prom_rules"]
@@ -441,12 +464,12 @@ class TestRender:
         old_base = os.environ.pop("LLM_BASE_URL", None)
         old_key = os.environ.pop("LLM_API_KEY", None)
         try:
-            pr = client.post("/api/v1/propose", json={"baseline": bl}).json()
+            pr = client.post("/api/v1/propose", json={"baseline": bl, "mode": "fixture"}).json()
             r = client.post(
                 "/api/v1/render",
                 json={"proposal": pr, "service": "bad_service"},
             )
-            assert r.status_code == 400
+            assert r.status_code == 422
         finally:
             if old_base: os.environ["LLM_BASE_URL"] = old_base
             if old_key: os.environ["LLM_API_KEY"] = old_key
@@ -505,7 +528,7 @@ class TestFullPipeline:
         old_key = os.environ.pop("LLM_API_KEY", None)
         try:
             # Stage 1: Evidence
-            ev = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments"}).json()
+            ev = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments", "mode": "fixture"}).json()
             assert "series" in ev
 
             # Stage 2: Baseline (deterministic)
@@ -513,12 +536,12 @@ class TestFullPipeline:
             assert bl["indicators"]["latency"]["p99_ms"] > 0
 
             # Stage 3: Proposal (recorded fallback)
-            pr = client.post("/api/v1/propose", json={"baseline": bl}).json()
+            pr = client.post("/api/v1/propose", json={"baseline": bl, "mode": "fixture"}).json()
             assert len(pr["slos"]) >= 1
             assert all("target_op" in s for s in pr["slos"])
 
             # Stage 4: Render
-            rendered = client.post("/api/v1/render", json={"proposal": pr, "service": "checkout-api"}).json()
+            rendered = client.post("/api/v1/render", json=render_payload(pr)).json()
             assert "openslo_yaml" in rendered
         finally:
             if old_base: os.environ["LLM_BASE_URL"] = old_base
@@ -532,14 +555,14 @@ class TestFullPipeline:
             bl = client.get("/api/v1/fixtures/baseline/checkout-api").json()
 
             # Load live evidence
-            ev = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments"}).json()
+            ev = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": bl["namespace"], "mode": "fixture"}).json()
 
             # Compute drift (deterministic)
             ds = client.post("/api/v1/drift/signal", json={"baseline": bl, "live_evidence": ev}).json()
             assert "dominant_signal" in ds
 
             # Classify (recorded fallback)
-            dr = client.post("/api/v1/drift/classify", json={"drift_signal": ds}).json()
+            dr = client.post("/api/v1/drift/classify", json={"drift_signal": ds, "mode": "fixture"}).json()
             assert "classification" in dr
             assert "recommendations" in dr
         finally:

@@ -21,6 +21,7 @@ export function Header() {
         slo<span style={{ color: 'var(--rh-red)' }}>scope</span>
       </span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <small style={{ display: "block", fontSize: 11, fontWeight: 400 }}>Demonstration · recorded evidence and responses</small>
         <motion.div
           animate={{ opacity: [0.4, 1, 0.4] }}
           transition={{ repeat: Infinity, duration: 2 }}

@@ -10,10 +10,56 @@ import (
 )
 
 // RenderPrometheusRules generates Prometheus recording and alerting rules from a proposal.
-func RenderPrometheusRules(proposalJSON json.RawMessage, service, namespace string) (string, error) {
+func RenderPrometheusRules(proposalJSON json.RawMessage, service, namespace string, evidenceJSON ...json.RawMessage) (string, error) {
 	var proposal Proposal
 	if err := json.Unmarshal(proposalJSON, &proposal); err != nil {
 		return "", fmt.Errorf("parsing proposal: %w", err)
+	}
+	if namespace == "" {
+		namespace = "default"
+	}
+	if proposal.Service != service {
+		return "", fmt.Errorf("proposal service does not match render request")
+	}
+	// Fail closed: an arbitrary LLM latency threshold need not exist as a
+	// classic histogram bucket. Never emit an exact selector without evidence.
+	for _, slo := range proposal.SLOs {
+		if slo.SLIType == "saturation" {
+			return "", fmt.Errorf("saturation alert export requires a qualified CPU/memory metric binding; export is not supported yet")
+		}
+		if slo.SLIType != "latency" {
+			continue
+		}
+		if len(evidenceJSON) != 1 {
+			return "", fmt.Errorf("latency alert export requires histogram evidence")
+		}
+		var evidence struct {
+			Service   string `json:"service"`
+			Namespace string `json:"namespace"`
+			Series    struct {
+				Histogram struct {
+					Buckets []struct {
+						LE json.RawMessage `json:"le"`
+					} `json:"buckets"`
+				} `json:"latency_histogram"`
+			} `json:"series"`
+		}
+		if err := json.Unmarshal(evidenceJSON[0], &evidence); err != nil {
+			return "", fmt.Errorf("invalid histogram evidence: %w", err)
+		}
+		if evidence.Service != service || evidence.Namespace != namespace {
+			return "", fmt.Errorf("histogram evidence identity does not match render request")
+		}
+		matched := false
+		for _, bucket := range evidence.Series.Histogram.Buckets {
+			var boundary float64
+			if json.Unmarshal(bucket.LE, &boundary) == nil && boundary == slo.SLATarget/1000 {
+				matched = true
+			}
+		}
+		if !matched {
+			return "", fmt.Errorf("latency threshold %g ms is not an observed histogram bucket; revise the proposal", slo.SLATarget)
+		}
 	}
 	if namespace == "" {
 		namespace = "default"

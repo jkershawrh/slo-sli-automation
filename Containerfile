@@ -2,7 +2,7 @@
 FROM node:20-slim AS frontend-build
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci --legacy-peer-deps 2>/dev/null || npm install
+RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
@@ -10,29 +10,27 @@ RUN npm run build
 FROM node:20-slim AS dashboard-build
 WORKDIR /build
 COPY dashboard/package.json dashboard/package-lock.json* ./
-RUN npm ci --legacy-peer-deps 2>/dev/null || npm install
+RUN npm ci
 COPY dashboard/ ./
 RUN npm run build
 
-# Stage 2: Python backend + built frontend + Go CLI
-FROM python:3.11-slim
-WORKDIR /app
-
-# Install Go for the CLI binary
-RUN apt-get update && apt-get install -y --no-install-recommends golang-go git && \
-    rm -rf /var/lib/apt/lists/*
-
-# Python dependencies
-COPY requirements.txt ./
-COPY backend/requirements.txt ./backend-requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt -r backend-requirements.txt
-
-# Go build
-COPY go.mod go.sum* ./
+# Build the CLI with the version declared by go.mod; no Go compiler in runtime.
+FROM golang:1.26.4 AS cli-build
+WORKDIR /build
+COPY go.mod go.sum ./
+RUN go mod download
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
-COPY analysis/schemas/ ./analysis/schemas/
-RUN go build -o /usr/local/bin/sloscope ./cmd/sloscope
+RUN CGO_ENABLED=0 go build -trimpath -o /sloscope ./cmd/sloscope
+
+# Runtime: analysis, API and read-only UI previews.
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt ./
+COPY backend/requirements.txt ./backend-requirements.txt
+COPY requirements.lock ./
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
+COPY --from=cli-build /sloscope /usr/local/bin/sloscope
 
 # Analysis modules
 COPY analysis/ ./analysis/

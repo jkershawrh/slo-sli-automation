@@ -305,7 +305,7 @@ func runGenerate(args []string) error {
 	if nsName == "" {
 		nsName = "default"
 	}
-	promRules, err := render.RenderPrometheusRules(proposal, svcName, nsName)
+	promRules, err := render.RenderPrometheusRules(proposal, svcName, nsName, evidence)
 	if err != nil {
 		return fmt.Errorf("rendering Prometheus rules: %w", err)
 	}

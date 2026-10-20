@@ -19,7 +19,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const elapsed = performance.now() - start
 
   if (!res.ok) {
-    throw new Error(data.detail || `API error: ${res.status}`)
+    throw new Error(typeof data.detail === "object" ? data.detail.reason || JSON.stringify(data.detail) : data.detail || `API error: ${res.status}`)
   }
 
   return {
@@ -272,22 +272,22 @@ export const api = {
     request<{ status: string; version: string }>('GET', '/health'),
 
   collectEvidence: (service: string, namespace: string) =>
-    request<Evidence>('POST', '/api/v1/evidence', { service, namespace }),
+    request<Evidence>('POST', '/api/v1/evidence', { service, namespace, mode: "fixture" }),
 
   computeBaseline: (evidence: Evidence) =>
     request<Baseline>('POST', '/api/v1/baseline', { evidence }),
 
   proposeSLOs: (baseline: Baseline, maturity = 'growing', contextType = 'service') =>
-    request<Proposal>('POST', '/api/v1/propose', { baseline, maturity, context_type: contextType }),
+    request<Proposal>('POST', '/api/v1/propose', { baseline, maturity, context_type: contextType, mode: "fixture" }),
 
   computeDrift: (baseline: Baseline, liveEvidence: Evidence) =>
     request<DriftSignal>('POST', '/api/v1/drift/signal', { baseline, live_evidence: liveEvidence }),
 
   classifyDrift: (driftSignal: DriftSignal) =>
-    request<DriftReport>('POST', '/api/v1/drift/classify', { drift_signal: driftSignal }),
+    request<DriftReport>('POST', '/api/v1/drift/classify', { drift_signal: driftSignal, mode: "fixture" }),
 
-  renderArtifacts: (proposal: Proposal, service = 'checkout-api', namespace = 'payments') =>
-    request<RenderOutput>('POST', '/api/v1/render', { proposal, service, namespace }),
+  renderArtifacts: (proposal: Proposal, service = 'checkout-api', namespace = 'payments', evidence?: Evidence) =>
+    request<RenderOutput>('POST', '/api/v1/render', { proposal, service, namespace, evidence }),
 
   listFixtures: () =>
     request<FixturesListing>('GET', '/api/v1/fixtures'),

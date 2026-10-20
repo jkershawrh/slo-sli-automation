@@ -47,13 +47,13 @@ echo ""
 
 # 2b. Backend API tests
 echo "--- Backend API tests ---"
-check "Backend API test suite" python3 -m pytest backend/test_server.py -q
+check "Backend API test suite" python3 -m pytest backend/ -q
 
 echo ""
 
 # 2c. Frontend tests
 echo "--- Frontend tests ---"
-check "Frontend component smoke tests" bash -c "cd frontend && npx vitest run 2>&1 | grep -q 'Tests.*passed'"
+check "Frontend component smoke tests" bash -c "cd frontend && npx vitest run"
 
 echo ""
 

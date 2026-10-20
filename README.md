@@ -2,6 +2,11 @@
 
 An open framework for replacing guesswork-driven SLO targets with defensible objectives grounded in Prometheus/Thanos telemetry and LLM-powered analysis. Works with any Prometheus/Thanos endpoint, any OpenAI-compatible LLM, and any OpenShift or Kubernetes cluster.
 
+This repository supplies the reusable engine for the **SLOscope lab**. See the [lab plan](docs/lab-plan.md),
+[evidence constraints](docs/evidence-constraints.md) and [unpublished-work reconciliation](docs/unpublished-reconciliation.md).
+
+Licensed under [Apache-2.0](LICENSE).
+
 ## Why this exists
 
 SLO targets set by gut feel ("let's aim for 99.9%") break in two ways: they are either unachievable (triggering alert fatigue) or too loose (hiding real degradation). This is the aspirational trap -- teams pick round numbers that sound right, then either drown in false alerts or miss genuine incidents.
@@ -20,7 +25,7 @@ Two stages. Evidence first, judgment second.
 
 **Stage one is deterministic.** Query Prometheus/Thanos for metrics, optionally enrich with traces (Tempo/Jaeger) and logs (Loki/Elasticsearch), then compute empirical baselines in code: latency percentiles, error rates, throughput distribution, availability, saturation, dependency latency breakdowns, and error category distributions. No LLM touches this. The numbers are measured, reproducible, and auditable.
 
-**Stage two is judgment.** Hand the computed evidence to an LLM (any OpenAI-compatible endpoint -- LiteLLM, vLLM, Ollama, or a hosted API). It proposes both an SLO target (objective -- where you aim, tighter than observed) and an SLA target (commitment -- what you guarantee, with headroom). It classifies drift with prioritized remediation plans and writes rationale citing specific observed values. It never fabricates a number, and it never actuates.
+**Stage two is judgment.** Hand the computed evidence to an LLM (any OpenAI-compatible endpoint -- LiteLLM, vLLM, Ollama, or a hosted API). It proposes both an SLO target (objective -- where you aim, tighter than observed) and an SLA target (commitment -- what you guarantee, with headroom). It classifies drift with prioritized remediation plans and writes rationale citing specific observed values. Runtime checks bind structured observations and numeric citations to the submitted evidence. Causal explanations and proposed targets remain advisory and require human review. The tool never actuates.
 
 ```
           Kubernetes / OpenShift Cluster
@@ -49,9 +54,9 @@ Two stages. Evidence first, judgment second.
 
 ### Prerequisites
 
-- Go 1.22+
-- Python 3.9+
-- `pip install -r requirements.txt`
+- Go 1.26.4+ (matches go.mod)
+- Python 3.11+ (the tested API/runtime version)
+- `pip install --require-hashes -r requirements.lock`
 
 ### Environment
 
@@ -298,16 +303,23 @@ Full results in `benchmark-results.json`. Whitepaper with analysis in `docs/whit
 
 ## Deployment
 
-```bash
-# Container build and push
-make container-build
-make container-push
+The RHDP lab's monitored checkout workload, private Prometheus, provisioning and learner path live in [rhpds/sloscope-lab](https://github.com/rhpds/sloscope-lab/pull/1). Publishing House owns its onboarding. Use its reviewed automation for the complete lab environment.
 
-# Deploy to OpenShift/Kubernetes
-oc apply -f deploy/deployment.yaml
+For a standalone **private dev API**, `deploy/deployment.yaml` is an OpenShift Template. It creates a PVC, Deployment, ClusterIP Service and ingress policy in the selected namespace. It creates no namespace, Secret, OAuth client, Route or cluster-wide permission. Supply an existing dedicated model Secret containing `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL`; keep credentials out of command history and source control.
+
+```bash
+oc process --local -f deploy/deployment.yaml \
+  -p SLOSCOPE_IMAGE="$SLOSCOPE_IMAGE" \
+  -p PROM_URL="$PROM_URL" -p LOOKBACK=5m \
+  | oc -n "$PROJECT_NAMESPACE" apply -f -
+oc -n "$PROJECT_NAMESPACE" port-forward service/sloscope 8080:8080
 ```
 
-The container image runs the FastAPI backend with the built frontend on port 8080. Configure LLM credentials via a Secret.
+Set `SLOSCOPE_IMAGE` to a reviewed `registry/repository@sha256:...` digest. The operator must verify that digest before processing the template; the template does not validate registry content. The API is available at localhost only through the authenticated port forward. Do not expose it with a Route until authentication and authorization are designed and accepted. External Prometheus/model endpoints require verified TLS; private namespace-local Prometheus can use HTTP. Telemetry credentials, if needed, require a separately scoped Secret reference; the API does not need Kubernetes permissions.
+
+`SLOSCOPE_LOOKBACK` defaults to `1h` and accepts 2 minutes through 30 days. Let the declared window warm up before collecting; missing or insufficient evidence must fail. Requests and classic histogram counts are reset-aware interval increases, aggregated across matching series. Coverage measures observed sample presence, not an independent guarantee of scrape completeness. Unnormalized CPU/memory series remain unsupported.
+
+The optional `deploy/cronjob.yaml` template uses the existing PVC and starts suspended. Supply the same image, endpoint and window plus `SERVICE` and `TARGET_NAMESPACE`. Review scheduling, history retention, PVC access and reference initialization before enabling it. Collection preserves the reference; model credentials are unnecessary for deterministic collection. These templates are dev starting points, not accepted RHDP catalog assets.
 
 ## Local development
 

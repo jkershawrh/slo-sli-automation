@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 from pathlib import Path
 from datetime import datetime
 
@@ -14,6 +15,8 @@ class ArtifactStore:
         self.root.mkdir(parents=True, exist_ok=True)
 
     def _service_dir(self, service):
+        if not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", service):
+            raise ValueError("Invalid service identity")
         d = self.root / service
         d.mkdir(parents=True, exist_ok=True)
         return d

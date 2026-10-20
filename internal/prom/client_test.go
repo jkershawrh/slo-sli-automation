@@ -302,30 +302,8 @@ func TestTimeout_Enforced(t *testing.T) {
 // ---------- Test: CollectEvidence assembles a valid bundle ----------
 
 func TestCollectEvidence_AssemblesBundle(t *testing.T) {
-	callCount := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		query := r.URL.Query().Get("query")
-		w.Header().Set("Content-Type", "application/json")
+	srv := intervalServer(t, false, false)
 
-		switch {
-		case strings.Contains(query, "bucket"):
-			w.Write([]byte(histogramBucketResponse))
-		case strings.Contains(query, "duration_seconds_sum"):
-			w.Write([]byte(sumResponse))
-		case strings.Contains(query, "duration_seconds_count"):
-			w.Write([]byte(countResponse))
-		case strings.Contains(query, `code=~"5.."`):
-			w.Write([]byte(errorTotalResponse))
-		case strings.Contains(query, "http_requests_total"):
-			w.Write([]byte(requestTotalResponse))
-		case strings.Contains(query, "cpu") || strings.Contains(query, "memory"):
-			// Saturation metrics are not available.
-			w.Write([]byte(emptyResultResponse))
-		default:
-			w.Write([]byte(emptyResultResponse))
-		}
-		callCount++
-	}))
 	defer srv.Close()
 
 	c := NewClient(ClientConfig{BaseURL: srv.URL, Timeout: 5 * time.Second})
