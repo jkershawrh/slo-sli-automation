@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Header } from './components/Header'
 import { ServicesOverview } from './pages/ServicesOverview'
 import { ServiceDetail } from './pages/ServiceDetail'
@@ -10,6 +10,10 @@ import { Alerts } from './pages/Alerts'
 type Tab = 'services' | 'drift' | 'budgets' | 'recommendations' | 'alerts'
 
 export default function App() {
+  const [fixtureMode, setFixtureMode] = useState(false)
+  useEffect(() => {
+    fetch('/health').then(r => r.json()).then(h => setFixtureMode(h.artifact_mode === 'fixture')).catch(() => {})
+  }, [])
   const [tab, setTab] = useState<Tab>('services')
   const [selectedService, setSelectedService] = useState<string | null>(null)
 
@@ -24,6 +28,9 @@ export default function App() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-dark)' }}>
       <Header />
+      <p role="status" style={{ padding: '8px 32px', margin: 0, color: 'var(--text-dim)' }}>
+        {fixtureMode ? 'Recorded sample mode — these artifacts are demonstrations, not live results.' : 'Stored artifact review — inspect provenance before treating a result as current evidence.'}
+      </p>
 
       {/* Tab bar */}
       <div style={{

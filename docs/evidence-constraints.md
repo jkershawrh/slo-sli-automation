@@ -30,6 +30,9 @@ HTTP evidence/proposal/classification requests default to `mode: live`. Recorded
 require `mode: fixture` and carry `X-SLOscope-Mode: fixture` and an input digest header. The
 presentation frontend explicitly opts into fixtures and labels itself as a demonstration.
 Live configuration errors and model/validation failures never become recorded-response success.
+The dashboard starts with an empty store. Recorded dashboard seeding requires the explicit
+server option `SLOSCOPE_SEED_DEMO=true`; the dashboard labels that mode and always reminds
+reviewers to inspect stored-artifact provenance.
 
 The existing presentation records were authored separately from telemetry fixtures; their
 numbers are not live acceptance evidence. The recorded 595ms latency threshold is absent from

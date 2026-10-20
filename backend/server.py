@@ -134,7 +134,8 @@ def load_fixture(path):
 
 @app.get("/health", tags=["System"], summary="Health check")
 def health():
-    return {"status": "ok", "version": "0.1.0"}
+    return {"status": "ok", "version": "0.1.0",
+            "artifact_mode": "fixture" if os.environ.get("SLOSCOPE_SEED_DEMO", "").lower() in ("1", "true", "yes") else "stored"}
 
 
 @app.post("/api/v1/evidence", tags=["SLO Generation"], summary="Collect evidence")
@@ -157,7 +158,7 @@ def collect_evidence(req: EvidenceRequest):
     # Patch service/namespace to match request
     evidence["service"] = req.service
     evidence["namespace"] = req.namespace
-    return evidence
+    return JSONResponse(evidence, headers={"X-SLOscope-Mode": "fixture", "X-SLOscope-Input-SHA256": input_digest(evidence)})
 
 
 @app.post("/api/v1/baseline", tags=["SLO Generation"], summary="Compute baseline")
@@ -468,8 +469,8 @@ from store import ArtifactStore
 
 store = ArtifactStore()
 
-# Seed demo data on startup if store is empty
-if not store.list_services():
+# Recorded data is opt-in, never silently presented as live monitoring.
+if os.environ.get("SLOSCOPE_SEED_DEMO", "").lower() in ("1", "true", "yes") and not store.list_services():
     from store import seed_demo_data
     seed_demo_data(store)
 

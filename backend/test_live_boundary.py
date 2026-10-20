@@ -58,3 +58,20 @@ def test_render_rejects_nonexistent_histogram_bucket():
         response=client.post('/api/v1/render',json={'proposal':proposal,'service':'checkout-api','evidence':evidence})
         assert response.status_code==422
         assert 'not an observed histogram bucket' in response.json()['detail']
+
+
+def test_fresh_server_store_does_not_seed_recorded_data(tmp_path):
+    import os
+    import subprocess
+    env = dict(os.environ, SLOSCOPE_STORE_DIR=str(tmp_path))
+    env.pop('SLOSCOPE_SEED_DEMO', None)
+    code = "from backend.server import store, health; assert store.list_services() == []; assert health()['artifact_mode'] == 'stored'"
+    subprocess.run([sys.executable, '-c', code], cwd=ROOT, env=env, check=True, capture_output=True)
+
+
+def test_explicit_evidence_fixture_is_labeled():
+    with TestClient(server.app) as client:
+        response = client.post('/api/v1/evidence', json={'mode': 'fixture'})
+        assert response.status_code == 200
+        assert response.headers['X-SLOscope-Mode'] == 'fixture'
+        assert response.headers['X-SLOscope-Input-SHA256']
