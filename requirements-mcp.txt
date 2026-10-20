@@ -1,0 +1,2 @@
+# Optional local protocol adapter. Core CLI/API do not require MCP.
+mcp==2.3.0
