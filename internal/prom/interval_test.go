@@ -63,7 +63,11 @@ func intervalServer(t *testing.T, zeroErrors, missingRequest bool) *httptest.Ser
 			for i := range result.Data.Result {
 				result.Data.Result[i].Value = nil
 				for stamp := start; stamp <= end; stamp += step {
-					result.Data.Result[i].Values = append(result.Data.Result[i].Values, SamplePair{Timestamp: stamp, Value: 1})
+					value := 1.0
+					if strings.HasPrefix(query, "count_over_time(") {
+						value = 2
+					}
+					result.Data.Result[i].Values = append(result.Data.Result[i].Values, SamplePair{Timestamp: stamp, Value: value})
 				}
 			}
 		}
@@ -228,7 +232,7 @@ func TestCoverageCadencePartitionsEntireWindow(t *testing.T) {
 	}
 	start := time.Unix(1000, 500000000)
 	end := start.Add(62500 * time.Millisecond)
-	row := Series{Metric: map[string]string{}, Values: []SamplePair{{Timestamp: 1000.5, Value: 1}, {Timestamp: 1063, Value: 1}}}
+	row := Series{Metric: map[string]string{}, Values: []SamplePair{{Timestamp: 1000.5, Value: 2}, {Timestamp: 1063, Value: 2}}}
 	coverage, err := timeBinCoverage(&QueryResult{Data: QueryData{ResultType: "matrix", Result: []Series{row}}}, vector(vectorSeries(map[string]string{}, 1)), start, end, 62500*time.Millisecond)
 	if err != nil || coverage != 1 {
 		t.Fatalf("fractional-second bins were not counted: %g %v", coverage, err)
@@ -238,5 +242,14 @@ func TestCoverageCadencePartitionsEntireWindow(t *testing.T) {
 func TestWindowProvenanceDoesNotTruncatePartialDays(t *testing.T) {
 	if got := formatDuration(24*time.Hour + time.Second); got != "86401s" {
 		t.Fatalf("window truncated to %s", got)
+	}
+}
+
+func TestSingleSampleBinsCannotClaimUsableCoverage(t *testing.T) {
+	start := time.Unix(1000, 0)
+	row := Series{Metric: map[string]string{}, Values: []SamplePair{{Timestamp: 1000, Value: 1}, {Timestamp: 1060, Value: 1}}}
+	coverage, err := timeBinCoverage(&QueryResult{Data: QueryData{ResultType: "matrix", Result: []Series{row}}}, vector(vectorSeries(map[string]string{}, 1)), start, start.Add(time.Minute), time.Minute)
+	if err != nil || coverage != 0 {
+		t.Fatalf("single source samples cannot support counter rates: %g %v", coverage, err)
 	}
 }

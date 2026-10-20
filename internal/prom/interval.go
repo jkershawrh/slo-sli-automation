@@ -258,7 +258,7 @@ func timeBinCoverage(result, totals *QueryResult, start, end time.Time, step tim
 				return 0, fmt.Errorf("invalid sample-presence value")
 			}
 			slot := int(math.Round((sample.Timestamp - (float64(start.Unix()) + float64(start.Nanosecond())/1e9)) / step.Seconds()))
-			if slot >= 0 && slot < expected && math.Abs(sample.Timestamp-((float64(start.Unix())+float64(start.Nanosecond())/1e9)+float64(slot)*step.Seconds())) < 1 && sample.Value > 0 {
+			if slot >= 0 && slot < expected && math.Abs(sample.Timestamp-((float64(start.Unix())+float64(start.Nanosecond())/1e9)+float64(slot)*step.Seconds())) < 1 && sample.Value >= 2 {
 				bins[slot] = true
 			}
 		}

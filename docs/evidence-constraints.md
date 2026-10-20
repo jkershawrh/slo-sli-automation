@@ -63,8 +63,8 @@ error results, invalid histograms, non-finite values, and partial-response warni
 
 Collector coverage is the *minimum fraction of occupied time bins across every observed series*
 in required histogram bucket/sum/count and request families. The bins use `count_over_time`
-with a cadence of at least 60 seconds, aiming for at most 500 bins. A bin counts once when a
-sample exists; extra buckets, instances, HTTP codes, or duplicate points cannot inflate it.
+with a cadence of at least 60 seconds, aiming for at most 500 bins. A bin counts once when at least 2
+source samples exist (the minimum for a counter rate); extra buckets, instances, HTTP codes, or duplicate points cannot inflate it.
 Missing series or a family without a usable increase do not count as complete coverage. This
 is a conservative sample-presence measure, not proof of scrape success, a complete inventory
 of expected instances, or telemetry authenticity. Rate samples need at least two source samples
