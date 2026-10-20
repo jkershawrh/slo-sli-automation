@@ -144,7 +144,8 @@ def collect_evidence(req: EvidenceRequest):
     if req.mode != "fixture":
         from collector import collect_evidence
         try:
-            return collect_evidence(req.service, req.namespace)
+            evidence = collect_evidence(req.service, req.namespace)
+            return JSONResponse(evidence, headers={"X-SLOscope-Mode": "live", "X-SLOscope-Input-SHA256": input_digest(evidence)})
         except ValueError as exc:
             raise HTTPException(422, str(exc))
         except RuntimeError:

@@ -1,170 +1,145 @@
-apiVersion: v1
-kind: ServiceAccount
+# Private dev template. Process parameters first; no Route, OAuth client, or cluster RBAC is created.
+apiVersion: template.openshift.io/v1
+kind: Template
 metadata:
-  name: sloscope-reader
-  namespace: sloscope
-  annotations:
-    serviceaccounts.openshift.io/oauth-redirectreference.primary: '{"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"sloscope"}}'
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: sloscope-reader-binding
-subjects:
-  - kind: ServiceAccount
-    name: sloscope-reader
-    namespace: sloscope
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: cluster-reader
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: sloscope
-  namespace: sloscope
-  labels:
-    app: sloscope
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: sloscope
-  template:
-    metadata:
-      labels:
+  name: sloscope-private
+parameters:
+- name: SLOSCOPE_IMAGE
+  required: true
+  description: Reviewed registry/repository@sha256 digest; never use a moving tag.
+- name: MODEL_SECRET
+  value: sloscope-model
+  required: true
+- name: PROM_URL
+  required: true
+  description: Operator-controlled Prometheus endpoint; external endpoints require
+    verified HTTPS.
+- name: LOOKBACK
+  value: 1h
+- name: ARTIFACT_CLAIM
+  value: sloscope-artifacts
+objects:
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    name: ${ARTIFACT_CLAIM}
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+      requests:
+        storage: 1Gi
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: sloscope
+  spec:
+    replicas: 1
+    strategy:
+      type: Recreate
+    selector:
+      matchLabels:
         app: sloscope
-    spec:
-      serviceAccountName: sloscope-reader
-      securityContext:
-        runAsNonRoot: true
-      containers:
-        - name: app
-          image: quay.io/slo-sli-automation/sloscope:latest
-          imagePullPolicy: Always
+    template:
+      metadata:
+        labels:
+          app: sloscope
+      spec:
+        automountServiceAccountToken: false
+        securityContext:
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+        containers:
+        - name: sloscope
+          image: ${SLOSCOPE_IMAGE}
           ports:
-            - containerPort: 8080
-              protocol: TCP
+          - containerPort: 8080
+            name: http
+          env:
+          - name: PROM_URL
+            value: ${PROM_URL}
+          - name: SLOSCOPE_LOOKBACK
+            value: ${LOOKBACK}
+          - name: SLOSCOPE_STORE_DIR
+            value: /artifacts
+          - name: SLOSCOPE_SEED_DEMO
+            value: 'false'
+          - name: PYTHONDONTWRITEBYTECODE
+            value: '1'
+          - name: LLM_BASE_URL
+            valueFrom:
+              secretKeyRef:
+                name: ${MODEL_SECRET}
+                key: LLM_BASE_URL
+          - name: LLM_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: ${MODEL_SECRET}
+                key: LLM_API_KEY
+          - name: LLM_MODEL
+            valueFrom:
+              secretKeyRef:
+                name: ${MODEL_SECRET}
+                key: LLM_MODEL
           resources:
             requests:
-              cpu: 500m
+              cpu: 200m
               memory: 256Mi
             limits:
-              cpu: "1"
+              cpu: '1'
               memory: 512Mi
           securityContext:
-            runAsNonRoot: true
             allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
             capabilities:
-              drop: [ALL]
-          env:
-            - name: SLOSCOPE_STORE_DIR
-              value: "/app/artifacts"
-          envFrom:
-            - secretRef:
-                name: sloscope-secrets
+              drop:
+              - ALL
           volumeMounts:
-            - name: artifacts
-              mountPath: /app/artifacts
+          - name: artifacts
+            mountPath: /artifacts
+          - name: tmp
+            mountPath: /tmp
           readinessProbe:
             httpGet:
               path: /health
-              port: 8080
-            initialDelaySeconds: 5
-            periodSeconds: 10
+              port: http
           livenessProbe:
             httpGet:
               path: /health
-              port: 8080
+              port: http
             initialDelaySeconds: 10
-            periodSeconds: 30
-
-        - name: oauth-proxy
-          image: registry.redhat.io/openshift4/ose-oauth-proxy-rhel9:latest
-          imagePullPolicy: IfNotPresent
-          args:
-            - -provider=openshift
-            - -http-address=:4180
-            - -https-address=
-            - -email-domain=*
-            - -upstream=http://localhost:8080/
-            - -client-id=sloscope-oauth
-            - -client-secret-file=/etc/proxy/secrets/client-secret
-            - -cookie-secret-file=/etc/proxy/secrets/session_secret
-            - -openshift-service-account=sloscope-reader
-            - -openshift-ca=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-            - -skip-auth-regex=^/health
-            - -upstream-timeout=180s
-            - -pass-user-headers=true
-          ports:
-            - containerPort: 4180
-              name: oauth-proxy
-          resources:
-            requests:
-              cpu: 100m
-              memory: 64Mi
-            limits:
-              cpu: 200m
-              memory: 128Mi
-          securityContext:
-            runAsNonRoot: true
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: [ALL]
-          readinessProbe:
-            httpGet:
-              path: /oauth/healthz
-              port: 4180
-            initialDelaySeconds: 5
-            periodSeconds: 5
-          livenessProbe:
-            httpGet:
-              path: /oauth/healthz
-              port: 4180
-            initialDelaySeconds: 10
-            periodSeconds: 10
-          volumeMounts:
-            - mountPath: /etc/proxy/secrets
-              name: oauth-proxy-secret
-              readOnly: true
-      volumes:
+        volumes:
         - name: artifacts
           persistentVolumeClaim:
-            claimName: sloscope-artifacts
-        - name: oauth-proxy-secret
-          secret:
-            secretName: sloscope-oauth-secret
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: sloscope
-  namespace: sloscope
-  labels:
-    app: sloscope
-  annotations:
-    service.alpha.openshift.io/serving-cert-secret-name: sloscope-tls
-spec:
-  selector:
-    app: sloscope
-  ports:
-    - name: oauth-proxy
-      port: 4180
-      targetPort: 4180
-      protocol: TCP
----
-apiVersion: route.openshift.io/v1
-kind: Route
-metadata:
-  name: sloscope
-  namespace: sloscope
-spec:
-  to:
-    kind: Service
+            claimName: ${ARTIFACT_CLAIM}
+        - name: tmp
+          emptyDir: {}
+- apiVersion: v1
+  kind: Service
+  metadata:
     name: sloscope
-  port:
-    targetPort: oauth-proxy
-  tls:
-    termination: edge
-    insecureEdgeTerminationPolicy: Redirect
+  spec:
+    selector:
+      app: sloscope
+    ports:
+    - name: http
+      port: 8080
+      targetPort: http
+    type: ClusterIP
+- apiVersion: networking.k8s.io/v1
+  kind: NetworkPolicy
+  metadata:
+    name: sloscope-private
+  spec:
+    podSelector:
+      matchLabels:
+        app: sloscope
+    policyTypes:
+    - Ingress
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app: sloscope

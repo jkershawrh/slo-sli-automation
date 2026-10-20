@@ -303,16 +303,23 @@ Full results in `benchmark-results.json`. Whitepaper with analysis in `docs/whit
 
 ## Deployment
 
-```bash
-# Container build and push
-make container-build
-make container-push
+The RHDP lab's monitored checkout workload, private Prometheus, provisioning and learner path live in [rhpds/sloscope-lab](https://github.com/rhpds/sloscope-lab/pull/1). Publishing House owns its onboarding. Use its reviewed automation for the complete lab environment.
 
-# Deploy to OpenShift/Kubernetes
-oc apply -f deploy/deployment.yaml
+For a standalone **private dev API**, `deploy/deployment.yaml` is an OpenShift Template. It creates a PVC, Deployment, ClusterIP Service and ingress policy in the selected namespace. It creates no namespace, Secret, OAuth client, Route or cluster-wide permission. Supply an existing dedicated model Secret containing `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL`; keep credentials out of command history and source control.
+
+```bash
+oc process --local -f deploy/deployment.yaml \
+  -p SLOSCOPE_IMAGE="$SLOSCOPE_IMAGE" \
+  -p PROM_URL="$PROM_URL" -p LOOKBACK=5m \
+  | oc -n "$PROJECT_NAMESPACE" apply -f -
+oc -n "$PROJECT_NAMESPACE" port-forward service/sloscope 8080:8080
 ```
 
-The container image runs the FastAPI backend with the built frontend on port 8080. Configure LLM credentials via a Secret.
+Set `SLOSCOPE_IMAGE` to a reviewed `registry/repository@sha256:...` digest. The operator must verify that digest before processing the template; the template does not validate registry content. The API is available at localhost only through the authenticated port forward. Do not expose it with a Route until authentication and authorization are designed and accepted. External Prometheus/model endpoints require verified TLS; private namespace-local Prometheus can use HTTP. Telemetry credentials, if needed, require a separately scoped Secret reference; the API does not need Kubernetes permissions.
+
+`SLOSCOPE_LOOKBACK` defaults to `1h` and accepts 2 minutes through 30 days. Let the declared window warm up before collecting; missing or insufficient evidence must fail. Requests and classic histogram counts are reset-aware interval increases, aggregated across matching series. Coverage measures observed sample presence, not an independent guarantee of scrape completeness. Unnormalized CPU/memory series remain unsupported.
+
+The optional `deploy/cronjob.yaml` template uses the existing PVC and starts suspended. Supply the same image, endpoint and window plus `SERVICE` and `TARGET_NAMESPACE`. Review scheduling, history retention, PVC access and reference initialization before enabling it. Collection preserves the reference; model credentials are unnecessary for deterministic collection. These templates are dev starting points, not accepted RHDP catalog assets.
 
 ## Local development
 

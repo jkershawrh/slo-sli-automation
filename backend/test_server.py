@@ -60,6 +60,15 @@ class TestHealth:
 # --- Evidence ---
 
 class TestEvidence:
+    def test_live_collection_binds_mode_and_digest_to_returned_evidence(self, monkeypatch):
+        import collector
+        evidence = json.loads((PROJECT_ROOT / "testdata/evidence_checkout_api.json").read_text())
+        monkeypatch.setattr(collector, "collect_evidence", lambda service, namespace: evidence)
+        response = client.post("/api/v1/evidence", json={"service": evidence["service"], "namespace": evidence["namespace"], "mode": "live"})
+        assert response.status_code == 200
+        assert response.headers["X-SLOscope-Mode"] == "live"
+        assert response.headers["X-SLOscope-Input-SHA256"] == server.input_digest(response.json())
+
     def test_collect_evidence_default_service(self):
         r = client.post("/api/v1/evidence", json={"service": "checkout-api", "namespace": "payments", "mode": "fixture"})
         assert r.status_code == 200
