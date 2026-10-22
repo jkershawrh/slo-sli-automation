@@ -154,7 +154,7 @@ def create_client():
     api_key = os.environ.get("LLM_API_KEY", "")
     if not base_url or not api_key:
         raise RuntimeError("LLM_BASE_URL and LLM_API_KEY must be set")
-    return OpenAI(base_url=base_url, api_key=api_key)
+    return OpenAI(base_url=base_url, api_key=api_key, timeout=30.0)
 
 
 def get_model():

@@ -44,3 +44,4 @@ Thumbs.db
 
 # Artifact store (runtime data)
 artifacts/
+.claude/settings.local.json

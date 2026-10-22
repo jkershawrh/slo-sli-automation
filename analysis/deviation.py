@@ -200,6 +200,24 @@ def compute_drift_signal(combined_input):
             })
             continue
 
+        # Skip indicators where baseline has no data (value=0, stddev=0)
+        if base_val == 0 and (stddev_val is None or stddev_val == 0):
+            indicators.append({
+                "name": name,
+                "live_value": live_val,
+                "baseline_value": 0,
+                "abs_deviation": 0,
+                "rel_deviation": 0,
+                "direction": "stable",
+                "band_upper": 0,
+                "band_lower": 0,
+                "band_breach": False,
+                "first_pass_class": "no_significant_drift",
+                "status": "skipped",
+                "skip_reason": "baseline has no data for {}".format(name),
+            })
+            continue
+
         dev = compute_deviation(live_val, base_val, stddev_val, ind_type)
         drift_class = classify_indicator(name, dev["direction"], dev["band_breach"])
 

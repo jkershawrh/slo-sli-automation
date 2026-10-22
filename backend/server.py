@@ -159,34 +159,33 @@ def compute_baseline_endpoint(req: BaselineRequest):
 
 @app.post("/api/v1/propose", tags=["SLO Generation"], summary="Propose SLOs")
 def propose_slos(req: ProposeRequest):
-    """Generate SLO/SLA proposals grounded in the baseline. Falls back to recorded responses when LLM is not configured."""
-    # Check if LLM is configured
+    """Generate SLO/SLA proposals grounded in the baseline. Falls back to recorded responses when LLM is unavailable."""
+    service = req.baseline.get("service", "checkout-api")
+    recorded_map = {
+        "checkout-api": RECORDED_DIR / "web_api_baseline_response.json",
+        "api-gateway": RECORDED_DIR / "high_traffic_baseline_response.json",
+        "batch-processor": RECORDED_DIR / "batch_processor_baseline_response.json",
+    }
+
     llm_base = os.environ.get("LLM_BASE_URL", "")
     llm_key = os.environ.get("LLM_API_KEY", "")
 
-    if not llm_base or not llm_key:
-        # Fall back to recorded response
-        service = req.baseline.get("service", "checkout-api")
-        recorded_map = {
-            "checkout-api": RECORDED_DIR / "web_api_baseline_response.json",
-            "api-gateway": RECORDED_DIR / "high_traffic_baseline_response.json",
-            "batch-processor": RECORDED_DIR / "batch_processor_baseline_response.json",
-        }
-        path = recorded_map.get(service)
-        if path and path.exists():
-            return load_fixture(path)
-        raise HTTPException(503, "LLM not configured and no recorded response available")
+    if llm_base and llm_key:
+        try:
+            from propose import propose
+            result = propose(
+                req.baseline,
+                maturity=req.maturity,
+                context_type=req.context_type,
+            )
+            return result
+        except Exception:
+            pass
 
-    try:
-        from propose import propose
-        result = propose(
-            req.baseline,
-            maturity=req.maturity,
-            context_type=req.context_type,
-        )
-        return result
-    except Exception as e:
-        raise HTTPException(500, f"Proposal failed: {e}")
+    path = recorded_map.get(service)
+    if path and path.exists():
+        return load_fixture(path)
+    raise HTTPException(503, "LLM unavailable and no recorded response for this service")
 
 
 @app.post("/api/v1/drift/signal", tags=["Drift Detection"], summary="Compute drift signal")
@@ -206,25 +205,25 @@ def compute_drift_signal_endpoint(req: DriftSignalRequest):
 
 @app.post("/api/v1/drift/classify", tags=["Drift Detection"], summary="Classify drift")
 def classify_drift(req: DriftClassifyRequest):
-    """Classify drift and generate remediation recommendations. Falls back to recorded responses when LLM is not configured."""
+    """Classify drift and generate remediation recommendations. Falls back to recorded responses when LLM is unavailable."""
+    from classify import normalized_report_class
+
     llm_base = os.environ.get("LLM_BASE_URL", "")
     llm_key = os.environ.get("LLM_API_KEY", "")
 
-    if not llm_base or not llm_key:
-        # Fall back to recorded response based on dominant signal class
-        from classify import normalized_report_class
-        dominant_class = normalized_report_class(req.drift_signal) or "no_significant_drift"
-        recorded_path = DRIFT_RECORDED_DIR / f"{dominant_class}_response.json"
-        if recorded_path.exists():
-            return load_fixture(recorded_path)
-        raise HTTPException(503, "LLM not configured and no recorded response available")
+    if llm_base and llm_key:
+        try:
+            from classify import classify
+            result = classify(req.drift_signal, context_type=req.context_type)
+            return result
+        except Exception:
+            pass
 
-    try:
-        from classify import classify
-        result = classify(req.drift_signal, context_type=req.context_type)
-        return result
-    except Exception as e:
-        raise HTTPException(500, f"Classification failed: {e}")
+    dominant_class = normalized_report_class(req.drift_signal) or "no_significant_drift"
+    recorded_path = DRIFT_RECORDED_DIR / f"{dominant_class}_response.json"
+    if recorded_path.exists():
+        return load_fixture(recorded_path)
+    raise HTTPException(503, "LLM unavailable and no recorded response for this drift class")
 
 
 @app.post("/api/v1/render", tags=["SLO Generation"], summary="Render artifacts")
@@ -498,6 +497,29 @@ def get_service_budget(service: str):
 def get_service_recommendations(service: str):
     """Active remediation recommendations from the latest drift report."""
     return store.get_recommendations(service)
+
+
+@app.post("/api/v2/collect", tags=["Dashboard"], summary="Collect live metrics")
+def collect_live(namespaces: list[str] = None):
+    """Trigger live Prometheus metric collection for namespaces."""
+    from collector import collect_and_store
+
+    if not namespaces:
+        namespaces = [s for s in store.list_services() if store.load(s, "baseline") is not None]
+
+    if not namespaces:
+        raise HTTPException(400, "No namespaces to collect. Provide a list or seed the store first.")
+
+    results = collect_and_store(namespaces, store, run_drift=True)
+    return {"collected": len(results), "results": results}
+
+
+@app.post("/api/v2/collect/{namespace}", tags=["Dashboard"], summary="Collect for one namespace")
+def collect_namespace(namespace: str):
+    """Collect live metrics for a single namespace."""
+    from collector import collect_and_store
+    results = collect_and_store([namespace], store, run_drift=True)
+    return results.get(namespace, {"status": "error", "error": "not found"})
 
 
 # --- Static file serving (production: serve built frontends) ---
