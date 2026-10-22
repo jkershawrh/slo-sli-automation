@@ -3,6 +3,8 @@ import copy
 import json
 from pathlib import Path
 import sys
+from unittest.mock import Mock
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'analysis'))
@@ -34,6 +36,23 @@ def test_missing_or_insufficient_evidence_abstains_in_http(monkeypatch):
         response=client.post('/api/v1/drift/classify',json={'drift_signal':signal})
         assert response.status_code==422
         assert response.json()['detail']['status']=='abstained'
+
+
+@pytest.mark.parametrize('field,value', [('rel_deviation', 999), ('breach_magnitude', 0)])
+def test_http_rejects_fabricated_derived_evidence_without_calling_model(monkeypatch, field, value):
+    import classify
+    model = Mock(side_effect=AssertionError('invalid evidence reached model'))
+    monkeypatch.setattr(classify, 'classify', model)
+    monkeypatch.setenv('LLM_BASE_URL', 'http://must-not-be-called.test/v1')
+    monkeypatch.setenv('LLM_API_KEY', 'test-only')
+    signal = json.loads((ROOT/'analysis/evals/fixtures/drift/latency_regression.json').read_text())
+    target = signal['indicators'][0] if field == 'rel_deviation' else signal['dominant_signal']
+    target[field] = value
+    with TestClient(server.app) as client:
+        response = client.post('/api/v1/drift/classify', json={'drift_signal': signal})
+    assert response.status_code == 422
+    assert response.json()['detail']['status'] == 'abstained'
+    model.assert_not_called()
 
 
 def test_collection_preserves_prior_baseline(tmp_path,monkeypatch):

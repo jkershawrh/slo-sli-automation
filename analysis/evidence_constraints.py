@@ -38,7 +38,13 @@ def require_coverage(artifact):
         raise EvidenceConstraintError("At least 0.8 measured coverage is required; collect more evidence")
 
 
+def _rounding_error(value):
+    """Half a last-place unit for the canonical serializer's six significant digits."""
+    return 0.5 * 10 ** (math.floor(math.log10(abs(value))) - 5) if value else 0.0
+
+
 def classification_constraints(signal):
+    from deviation import EPSILON, classify_indicator, relative_deviation, normalized_breach_magnitude
     validate(signal, "drift-signal")
     require_coverage(signal)
     measured = [i for i in signal["indicators"] if i.get("status", "measured") == "measured"]
@@ -50,8 +56,8 @@ def classification_constraints(signal):
     breached = {i["name"] for i in measured if i["band_breach"]}
     if breached != set(signal["all_breached_indicators"]):
         raise EvidenceConstraintError("Breached indicator list conflicts with measured evidence")
+    magnitudes = {}
     for i in measured:
-        from deviation import EPSILON, classify_indicator
         units = {"latency_p99_ms": "ms", "latency_p50_ms": "ms", "dependency_p99_ms": "ms",
                  "error_rate_ratio": "ratio", "availability_ratio": "ratio", "error_top_category_ratio": "ratio",
                  "throughput_mean_rps": "rps", "cpu_mean_ratio": "ratio", "memory_mean_ratio": "ratio"}
@@ -69,8 +75,20 @@ def classification_constraints(signal):
         outside = i["live_value"] < i["band_lower"] or i["live_value"] > i["band_upper"]
         if outside != i["band_breach"]:
             raise EvidenceConstraintError("Breach flag conflicts with measured tolerance band")
-        if not math.isclose(i["abs_deviation"], abs(i["live_value"] - i["baseline_value"]), rel_tol=0.002, abs_tol=1e-6):
+        rounding = _rounding_error(i["live_value"]) + _rounding_error(i["baseline_value"])
+        if not math.isclose(i["abs_deviation"], abs(diff), rel_tol=0.002, abs_tol=max(1e-6, rounding)):
             raise EvidenceConstraintError("Deviation conflicts with measured values")
+        relative = relative_deviation(i["live_value"], i["baseline_value"], units[i["name"]])
+        # Stored examples and canonical JSON round numbers; tolerate rounding,
+        # but never admit caller-invented derived measurements as numeric evidence.
+        denominator = max(abs(i["baseline_value"]), epsilon)
+        relative_rounding = (rounding + abs(relative) * _rounding_error(i["baseline_value"])) / denominator
+        if not math.isclose(i["rel_deviation"], relative, rel_tol=0.002, abs_tol=max(1e-6, relative_rounding)):
+            raise EvidenceConstraintError("Relative deviation conflicts with measured values")
+        magnitude = normalized_breach_magnitude(i["live_value"], i["baseline_value"], i["band_lower"], i["band_upper"])
+        if not math.isfinite(magnitude):
+            raise EvidenceConstraintError("Finite tolerance-band magnitude is required")
+        magnitudes[i["name"]] = magnitude
     dominant = signal["dominant_signal"]
     if breached and dominant["indicator"] not in breached:
         raise EvidenceConstraintError("Dominant indicator is not a measured breach")
@@ -80,6 +98,13 @@ def classification_constraints(signal):
         observed_class = next(i["first_pass_class"] for i in measured if i["name"] == dominant["indicator"])
         if dominant["class"] != observed_class:
             raise EvidenceConstraintError("Dominant class conflicts with its measured indicator")
+        magnitude = magnitudes[dominant["indicator"]]
+        if not math.isclose(dominant["breach_magnitude"], magnitude, rel_tol=0.002, abs_tol=1e-6):
+            raise EvidenceConstraintError("Dominant magnitude conflicts with measured values")
+        if not math.isclose(magnitude, max(magnitudes.values()), rel_tol=0.002, abs_tol=1e-6):
+            raise EvidenceConstraintError("Dominant indicator is not the strongest measured breach")
+    elif dominant["indicator"] != "none" or dominant["breach_magnitude"] != 0:
+        raise EvidenceConstraintError("No measured breach requires an empty dominant signal")
     if breached and dominant["class"] == "no_significant_drift":
         raise EvidenceConstraintError("Measured breaches cannot be classified as no drift")
     return {

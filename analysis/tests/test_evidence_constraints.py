@@ -84,6 +84,54 @@ def test_conflicting_indicator_class_or_direction_abstains(field,value):
     with pytest.raises(EvidenceConstraintError): classification_constraints(signal)
 
 
+@pytest.mark.parametrize('field,value', [('rel_deviation', 999), ('rel_deviation', -0.5),
+                                       ('breach_magnitude', 0), ('breach_magnitude', 999)])
+def test_fabricated_derived_measurements_abstain_before_model(field, value):
+    signal = load('evals/fixtures/drift/latency_regression.json')
+    target = signal['indicators'][0] if field == 'rel_deviation' else signal['dominant_signal']
+    target[field] = value
+    client = MagicMock()
+    with pytest.raises(EvidenceConstraintError, match='conflicts with measured values'):
+        classify(signal, client=client, model='stub')
+    client.chat.completions.create.assert_not_called()
+
+
+def test_dominant_selection_must_be_the_strongest_measured_breach():
+    from deviation import compute_drift_signal
+    baseline = json.loads((ROOT.parent / 'testdata/drift_baseline_reference.json').read_text())
+    evidence = json.loads((ROOT.parent / 'testdata/drift_live_latency_regression.json').read_text())
+    signal = compute_drift_signal({'baseline': baseline, 'live_evidence': evidence})
+    assert classification_constraints(signal)
+    weaker = next(i for i in signal['indicators'] if i['name'] == 'latency_p50_ms')
+    signal['dominant_signal'] = {'indicator': weaker['name'], 'class': weaker['first_pass_class'],
+        'breach_magnitude': weaker['abs_deviation'] / ((weaker['band_upper'] - weaker['band_lower']) / 2)}
+    with pytest.raises(EvidenceConstraintError, match='strongest measured breach'):
+        classification_constraints(signal)
+
+
+def test_generated_serialized_signals_and_near_zero_relative_values_are_admissible():
+    from deviation import compute_drift_signal, compute_deviation
+    from serialize import serialize
+    baseline = json.loads((ROOT.parent / 'testdata/drift_baseline_reference.json').read_text())
+    for name in ('drift_live_latency_regression.json', 'drift_live_no_drift.json'):
+        evidence = json.loads((ROOT.parent / 'testdata' / name).read_text())
+        signal = json.loads(serialize(compute_drift_signal({'baseline': baseline, 'live_evidence': evidence})))
+        assert classification_constraints(signal)
+    signal = load('evals/fixtures/drift/latency_regression.json')
+    indicator = signal['indicators'][2]
+    indicator.update(baseline_value=0, live_value=0.0001)
+    dev = compute_deviation(0.0001, 0, 0.0006, 'ratio')
+    indicator.update({k: dev[k] for k in ('abs_deviation', 'rel_deviation', 'direction', 'band_lower', 'band_upper', 'band_breach')})
+    assert classification_constraints(signal)
+
+
+def test_no_breach_does_not_allow_invented_dominant_magnitude():
+    signal = load('evals/fixtures/drift/no_significant_drift.json')
+    signal['dominant_signal']['breach_magnitude'] = 999
+    with pytest.raises(EvidenceConstraintError, match='empty dominant signal'):
+        classification_constraints(signal)
+
+
 @pytest.mark.parametrize('citation',['.123456789','999,999,999','9.99e12'])
 def test_alternate_numeric_notation_cannot_hide_fabricated_measurements(citation):
     signal=load('evals/fixtures/drift/latency_regression.json')

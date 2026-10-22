@@ -31,6 +31,20 @@ EPSILON = {
 }
 
 
+def relative_deviation(live_value, baseline_value, indicator_type="default"):
+    """Stabilized signed deviation, shared by generation and evidence admission."""
+    epsilon = EPSILON.get(indicator_type, EPSILON["default"])
+    return (live_value - baseline_value) / max(abs(baseline_value), epsilon)
+
+
+def normalized_breach_magnitude(live_value, baseline_value, band_lower, band_upper):
+    """Rank a measured breach using its supplied tolerance band."""
+    if band_lower <= live_value <= band_upper:
+        return 0.0
+    half_width = (band_upper - band_lower) / 2
+    return abs(live_value - baseline_value) / half_width if half_width > 0 else float("inf")
+
+
 def compute_deviation(live_value, baseline_value, stddev, indicator_type="default"):
     """Compute deviation metrics between live and baseline values.
 
@@ -49,8 +63,7 @@ def compute_deviation(live_value, baseline_value, stddev, indicator_type="defaul
 
     # Stabilized relative deviation for near-zero baselines
     epsilon = EPSILON.get(indicator_type, EPSILON["default"])
-    denominator = max(abs(baseline_value), epsilon)
-    rel_dev = (live_value - baseline_value) / denominator
+    rel_dev = relative_deviation(live_value, baseline_value, indicator_type)
 
     # Direction
     diff = live_value - baseline_value
@@ -69,11 +82,7 @@ def compute_deviation(live_value, baseline_value, stddev, indicator_type="defaul
     band_breach = live_value > band_upper or live_value < band_lower
 
     # Normalized breach magnitude (for dominant signal ranking)
-    band_width = band_upper - band_lower
-    if band_width > 0:
-        breach_magnitude = abs_dev / (band_width / 2) if band_breach else 0.0
-    else:
-        breach_magnitude = float("inf") if abs_dev > 0 else 0.0
+    breach_magnitude = normalized_breach_magnitude(live_value, baseline_value, band_lower, band_upper)
 
     return {
         "abs_deviation": abs_dev,

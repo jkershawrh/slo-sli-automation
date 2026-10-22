@@ -68,6 +68,14 @@ async def test_stdio_discovery_review_and_abstention(tmp_path):
             assert "latency_regression" in result.structured_content["permitted_classifications"]
             assert result.structured_content["report_checked"] is True
 
+            for field, value in (("rel_deviation", 999), ("breach_magnitude", 0)):
+                altered = copy.deepcopy(signal)
+                target = altered["indicators"][0] if field == "rel_deviation" else altered["dominant_signal"]
+                target[field] = value
+                result = await session.call_tool("review_classification", {"signal": altered})
+                assert result.structured_content["status"] == "abstained"
+                assert "conflicts with measured values" in result.structured_content["reason"]
+
             bad_signal = copy.deepcopy(signal)
             bad_signal["indicators"] = []
             result = await session.call_tool("review_classification", {"signal": bad_signal})
